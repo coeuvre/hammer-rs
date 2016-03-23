@@ -1,0 +1,8 @@
+[package]
+name = "hammer"
+version = "0.1.0"
+authors = ["Coeuvre Wong <coeuvre@gmail.com>"]
+
+[dependencies]
+libc = "*"
+sdl2-sys = "*"
