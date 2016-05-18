@@ -1,0 +1,13 @@
+[package]
+name = "editor"
+version = "0.1.0"
+authors = ["Coeuvre Wong <coeuvre@gmail.com>"]
+
+[dependencies]
+log = "*"
+env_logger = "*"
+
+[target.'cfg(windows)'.dependencies]
+winapi = "*"
+kernel32-sys = "*"
+user32-sys = "*"

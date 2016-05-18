@@ -5,4 +5,4 @@ authors = ["Coeuvre Wong <coeuvre@gmail.com>"]
 
 [dependencies]
 libc = "*"
-sdl2-sys = "*"
+
