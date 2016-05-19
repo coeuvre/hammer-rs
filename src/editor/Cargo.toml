@@ -6,8 +6,11 @@ authors = ["Coeuvre Wong <coeuvre@gmail.com>"]
 [dependencies]
 log = "*"
 env_logger = "*"
+gl = "*"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "*"
+gdi32-sys = "*"
 kernel32-sys = "*"
+opengl32-sys = "*"
 user32-sys = "*"
