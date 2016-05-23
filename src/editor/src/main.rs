@@ -13,6 +13,9 @@ extern crate user32;
 use std::mem;
 use std::ffi::{CString, CStr};
 
+use std::sync::mpsc::*;
+use std::thread;
+
 use winapi::basetsd::*;
 use winapi::minwindef::*;
 use winapi::windef::*;
@@ -25,6 +28,8 @@ use opengl32::*;
 use user32::*;
 
 use gl::types::*;
+
+//mod ui;
 
 pub type Error = Box<std::error::Error + Send + Sync>;
 
@@ -39,11 +44,58 @@ macro_rules! wstr {
     });
 }
 
-pub struct Window {
-    hwnd: HWND,
+pub struct WindowBuilder {
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+}
 
+impl WindowBuilder {
+    pub fn new() -> WindowBuilder {
+        WindowBuilder {
+            x: 0,
+            y: 0,
+            w: 800,
+            h: 600,
+        }
+    }
+
+    pub fn pos(mut self, x: i32, y: i32) -> Self {
+        self.x = x;
+        self.y = y;
+        self
+    }
+
+    pub fn size(mut self, w: i32, h: i32) -> Self {
+        self.w = w;
+        self.h = h;
+        self
+    }
+
+    pub fn build(self) -> Result<Window, Error> {
+        let (tx, rx) = channel();
+        thread::spawn(move || {
+            unsafe { window_thread_main(self, tx); }
+        });
+        rx.recv().unwrap()
+    }
+}
+
+pub struct Window {
+    /*
     context: RenderContext,
     buffer: RenderBuffer,
+    */
+
+    quit_rx: Receiver<()>,
+    state: *const WindowState,
+}
+
+pub struct WindowState {
+    quit_tx: Option<Sender<()>>,
+
+    hwnd: HWND,
 
     x: i32,
     y: i32,
@@ -51,7 +103,18 @@ pub struct Window {
     h: i32,
 }
 
+unsafe impl Send for Window {}
+
 impl Window {
+    pub fn show(&mut self) {
+        unsafe { ShowWindow((*self.state).hwnd, SW_SHOW); }
+    }
+
+    pub fn wait(&self) {
+        self.quit_rx.recv().unwrap();
+    }
+
+    /*
     pub unsafe fn render(&self) -> Result<(), Error> {
         try!(self.context.make_current());
 
@@ -108,6 +171,7 @@ impl Window {
                             self.buffer.hdc,
                             &mut src_pos, 0, &mut blend, ULW_ALPHA);
     }
+    */
 }
 
 pub struct RenderContext {
@@ -273,33 +337,35 @@ impl RenderBuffer {
 #[allow(unused_variables)]
 unsafe extern "system"
 fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    let window = &mut *(GetWindowLongPtrW(hwnd, 0) as (*mut Window));
+    let state = &mut *(GetWindowLongPtrW(hwnd, 0) as (*mut WindowState));
 
     match msg {
         WM_CREATE => {
             let cs = &*(lparam as (*mut CREATESTRUCTW));
-            let window = &mut *(cs.lpCreateParams as (*mut Window));
-            SetWindowLongPtrW(hwnd, 0, window as (*mut Window) as LONG_PTR);
+            let state = &mut *(cs.lpCreateParams as (*mut WindowState));
+            SetWindowLongPtrW(hwnd, 0, state as (*mut WindowState) as LONG_PTR);
 
-            window.hwnd = hwnd;
+            state.hwnd = hwnd;
 
             let mut rect = mem::uninitialized();
             GetWindowRect(hwnd, &mut rect);
 
-            window.x = rect.left;
-            window.y = rect.top;
-            window.w = rect.right - rect.left;
-            window.h = rect.bottom - rect.top;
+            state.x = rect.left;
+            state.y = rect.top;
+            state.w = rect.right - rect.left;
+            state.h = rect.bottom - rect.top;
 
             SetWindowLongPtrW(hwnd, GWL_STYLE, WS_POPUP as LONG_PTR);
-            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, WS_EX_LAYERED as LONG_PTR);
-
+            //SetWindowLongPtrW(hwnd, GWL_EXSTYLE, WS_EX_LAYERED as LONG_PTR);
+            /*
             window.context = RenderContext::new(GetDC(hwnd)).unwrap();
             window.buffer = RenderBuffer::new(&window.context, window.w, window.h).unwrap();
 
             window.context.make_current().unwrap();
 
             window.render().unwrap();
+            */
+            ShowWindow(hwnd, SW_SHOW);
         }
 
         WM_CLOSE => {
@@ -321,12 +387,15 @@ fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT
     return 0;
 }
 
-fn main() {
-    env_logger::init().unwrap();
+static WINDOW_CLASS_REGISTER: std::sync::Once = std::sync::ONCE_INIT;
 
-    unsafe {
-        let hinstance = GetModuleHandleW(0 as LPCWSTR);
-        let window_class_name = wstr!("HAMMEREDITORWINDOWCLASS");
+unsafe fn window_thread_main(builder: WindowBuilder, tx: Sender<Result<Window, Error>>) {
+    let hinstance = GetModuleHandleW(0 as LPCWSTR);
+
+    let class_name = wstr!("HAMMEREDITORWINDOWCLASS");
+
+    WINDOW_CLASS_REGISTER.call_once(|| {
+        info!("Registing window class");
 
         let mut wc: WNDCLASSEXW = mem::zeroed();
         wc.cbSize = mem::size_of_val(&wc) as UINT;
@@ -334,35 +403,58 @@ fn main() {
         wc.lpfnWndProc = Some(window_proc);
         wc.hCursor = LoadCursorW(0 as HINSTANCE, winapi::winuser::IDC_ARROW);
         wc.hInstance = hinstance;
-        wc.lpszClassName = window_class_name.as_ptr();
+        wc.lpszClassName = class_name.as_ptr();
         wc.cbWndExtra = mem::size_of::<Window>() as winapi::c_int;
 
         if RegisterClassExW(&wc) == 0 {
-            error!("Failed to register window class.");
+            panic!("Failed to register window class.");
         }
+    });
 
-        let window: Window = mem::zeroed();
+    let (quit_tx, quit_rx) = channel();
 
-        let title = wstr!("Hammer Editor");
-        let hwnd = CreateWindowExW(
-            0,
-            window_class_name.as_ptr(),
-            title.as_ptr(),
-            0,
-            CW_USEDEFAULT, CW_USEDEFAULT,
-            CW_USEDEFAULT, CW_USEDEFAULT,
-            0 as HWND,
-            0 as HMENU,
-            hinstance,
-            mem::transmute(&window)
-        );
+    let state: *mut WindowState = Box::into_raw(Box::new(mem::zeroed()));
+    (*state).quit_tx = Some(quit_tx);
 
-        ShowWindow(hwnd, SW_SHOW);
+    let title = wstr!("Hammer Editor");
+    CreateWindowExW(
+        0,
+        class_name.as_ptr(),
+        title.as_ptr(),
+        0,
+        builder.x, builder.y,
+        builder.w, builder.h,
+        0 as HWND,
+        0 as HMENU,
+        hinstance,
+        state as LPVOID,
+    );
 
-        let mut msg = mem::uninitialized();
-        while GetMessageW(&mut msg, 0 as HWND, 0, 0) != 0 {
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
-        }
+    let window = Window {
+        quit_rx: quit_rx,
+        state: state,
+    };
+
+    tx.send(Ok(window)).unwrap();
+
+    let mut msg = mem::uninitialized();
+    while GetMessageW(&mut msg, 0 as HWND, 0, 0) != 0 {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
     }
+
+    (*state).quit_tx.as_mut().unwrap().send(()).unwrap();
+}
+
+fn main() {
+    env_logger::init().unwrap();
+
+    let mut win1 = WindowBuilder::new().build().unwrap();
+    win1.show();
+
+    let mut win2 = WindowBuilder::new().pos(0, 600).build().unwrap();
+    win2.show();
+
+    win1.wait();
+    win2.wait();
 }
