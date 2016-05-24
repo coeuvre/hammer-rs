@@ -209,5 +209,9 @@ fn main() {
     win2.show();
 
     win1.wait_for_close();
+    win1.close();
+
     win2.wait_for_close();
+    win2.close();
+
 }

@@ -51,19 +51,19 @@ impl WindowBuilder {
         }
     }
 
-    pub fn pos(mut self, x: i32, y: i32) -> Self {
+    pub fn pos(&mut self, x: i32, y: i32) -> &mut Self {
         self.x = x;
         self.y = y;
         self
     }
 
-    pub fn size(mut self, w: i32, h: i32) -> Self {
+    pub fn size(&mut self, w: i32, h: i32) -> &mut Self {
         self.w = w;
         self.h = h;
         self
     }
 
-    pub fn build(self) -> Result<Window, Error> {
+    pub fn build(&self) -> Result<Window, Error> {
         WINDOW_THREAD_INIT.call_once(|| {
             thread::spawn(move || {
                 unsafe { window_thread_main(); }
@@ -74,7 +74,7 @@ impl WindowBuilder {
 
         let (tx, rx) = channel();
         let create_window_param = CreateWindowParam {
-            builder: &self,
+            builder: self,
             tx: tx,
         };
 
@@ -113,6 +113,10 @@ impl Window {
                 }
             }
         }
+    }
+
+    pub fn close(self) {
+        // Consume `self` and trigger `Drop`
     }
 
     /*
@@ -173,6 +177,24 @@ impl Window {
                             &mut src_pos, 0, &mut blend, ULW_ALPHA);
     }
     */
+}
+
+impl Drop for Window {
+    fn drop(&mut self) {
+        unsafe {
+            let (tx, rx) = channel();
+
+            let destroy_window_param = DestroyWindowParam {
+                hwnd: (*self.state).hwnd,
+                tx: tx,
+            };
+
+            PostThreadMessageW(WINDOW_THREAD_ID, WM_DESTROY_WINDOW, 0,
+                               &destroy_window_param as *const DestroyWindowParam as LPARAM);
+
+            rx.recv().unwrap().unwrap();
+        }
+    }
 }
 
 pub struct WindowState {
@@ -254,13 +276,20 @@ fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT
     return 0;
 }
 
-static WM_CREATE_WINDOW: UINT = WM_USER;
+const WM_CREATE_WINDOW: UINT = WM_USER;
+const WM_DESTROY_WINDOW: UINT = WM_USER + 1;
+
 static WINDOW_THREAD_INIT: Once = ONCE_INIT;
 static mut WINDOW_THREAD_ID: DWORD = 0 as DWORD;
 
 struct CreateWindowParam<'a> {
     builder: &'a WindowBuilder,
     tx: Sender<Result<Window, Error>>,
+}
+
+struct DestroyWindowParam {
+    hwnd: HWND,
+    tx: Sender<Result<(), Error>>,
 }
 
 unsafe fn window_thread_main() {
@@ -285,13 +314,23 @@ unsafe fn window_thread_main() {
 
     let mut msg = mem::uninitialized();
     while GetMessageW(&mut msg, 0 as HWND, 0, 0) != 0 {
-        if msg.message == WM_CREATE_WINDOW {
-            let create_window_param = &*(msg.lParam as *const CreateWindowParam);
-            let result = create_window(hinstance, &class_name, create_window_param.builder);
-            create_window_param.tx.send(result).unwrap();
-        } else {
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
+        match msg.message {
+            WM_CREATE_WINDOW => {
+                let create_window_param = &*(msg.lParam as *const CreateWindowParam);
+                let result = create_window(hinstance, &class_name, create_window_param.builder);
+                create_window_param.tx.send(result).unwrap();
+            }
+
+            WM_DESTROY_WINDOW => {
+                let destroy_window_param = &*(msg.lParam as *const DestroyWindowParam);
+                DestroyWindow(destroy_window_param.hwnd);
+                destroy_window_param.tx.send(Ok(())).unwrap();
+            }
+
+            _ => {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
         }
     }
 }
