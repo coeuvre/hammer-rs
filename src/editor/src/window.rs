@@ -35,6 +35,7 @@ pub enum Event {
 }
 
 pub struct WindowBuilder {
+    title: Vec<u16>,
     x: i32,
     y: i32,
     w: i32,
@@ -44,11 +45,17 @@ pub struct WindowBuilder {
 impl WindowBuilder {
     pub fn new() -> WindowBuilder {
         WindowBuilder {
+            title: wstr!("Hammer"),
             x: 0,
             y: 0,
             w: 800,
             h: 600,
         }
+    }
+
+    pub fn title(&mut self, title: &str) -> &mut Self {
+        self.title = wstr!(title);
+        self
     }
 
     pub fn pos(&mut self, x: i32, y: i32) -> &mut Self {
@@ -65,11 +72,14 @@ impl WindowBuilder {
 
     pub fn build(&self) -> Result<Window, Error> {
         WINDOW_THREAD_INIT.call_once(|| {
+            let (tx, rx) = channel();
+
             thread::spawn(move || {
-                unsafe { window_thread_main(); }
+                unsafe { window_thread_main(tx); }
             });
 
-            unsafe { while WINDOW_THREAD_ID == 0 as DWORD {} }
+            // Wait for the window thread to finish initialization
+            rx.recv().unwrap();
         });
 
         let (tx, rx) = channel();
@@ -79,6 +89,7 @@ impl WindowBuilder {
         };
 
         unsafe {
+            assert!(WINDOW_THREAD_ID != 0);
             PostThreadMessageW(WINDOW_THREAD_ID, WM_CREATE_WINDOW, 0,
                                &create_window_param as *const CreateWindowParam as LPARAM);
         }
@@ -101,14 +112,15 @@ unsafe impl Send for Window {}
 
 impl Window {
     pub fn show(&mut self) {
-        unsafe { ShowWindow((*self.state).hwnd, SW_SHOW); }
+        unsafe {
+            PostThreadMessageW(WINDOW_THREAD_ID, WM_SHOW_WINDOW, 0, (*self.state).hwnd as LPARAM);
+        }
     }
 
     pub fn wait_for_close(&self) {
         loop {
             match self.event_rx.recv().unwrap() {
                 Event::Close => {
-                    info!("Event::Close");
                     break;
                 }
             }
@@ -116,7 +128,7 @@ impl Window {
     }
 
     pub fn close(self) {
-        // Consume `self` and trigger `Drop`
+        drop(self);
     }
 
     /*
@@ -181,9 +193,9 @@ impl Window {
 
 impl Drop for Window {
     fn drop(&mut self) {
-        unsafe {
-            let (tx, rx) = channel();
+        let (tx, rx) = channel();
 
+        unsafe {
             let destroy_window_param = DestroyWindowParam {
                 hwnd: (*self.state).hwnd,
                 tx: tx,
@@ -223,16 +235,40 @@ impl WindowState {
     }
 }
 
+#[allow(non_snake_case)]
+#[cfg(target_arch = "x86_64")]
+unsafe fn SetWindowLongPtr(hwnd: HWND, index: winapi::c_int, data: LONG_PTR) {
+    SetWindowLongPtrW(hwnd, index, data);
+}
+
+#[allow(non_snake_case)]
+#[cfg(target_arch = "x86")]
+unsafe fn SetWindowLongPtr(hwnd: HWND, index: winapi::c_int, data: LONG_PTR) {
+    SetWindowLongW(hwnd, index, data);
+}
+
+#[allow(non_snake_case)]
+#[cfg(target_arch = "x86_64")]
+unsafe fn GetWindowLongPtr(hwnd: HWND, index: winapi::c_int) -> LONG_PTR {
+    GetWindowLongPtrW(hwnd, index)
+}
+
+#[allow(non_snake_case)]
+#[cfg(target_arch = "x86")]
+unsafe fn GetWindowLongPtr(hwnd: HWND, index: winapi::c_int) -> LONG_PTR {
+    GetWindowLongW(hwnd, index)
+}
+
 #[allow(unused_variables)]
 unsafe extern "system"
 fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    let state = &mut *(GetWindowLongPtrW(hwnd, 0) as (*mut WindowState));
+    let state = &mut *(GetWindowLongPtr(hwnd, 0) as (*mut WindowState));
 
     match msg {
         WM_CREATE => {
             let cs = &*(lparam as (*mut CREATESTRUCTW));
             let state = &mut *(cs.lpCreateParams as (*mut WindowState));
-            SetWindowLongPtrW(hwnd, 0, state as (*mut WindowState) as LONG_PTR);
+            SetWindowLongPtr(hwnd, 0, state as (*mut WindowState) as LONG_PTR);
 
             state.hwnd = hwnd;
 
@@ -244,8 +280,8 @@ fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT
             state.w = rect.right - rect.left;
             state.h = rect.bottom - rect.top;
 
-            SetWindowLongPtrW(hwnd, GWL_STYLE, WS_POPUP as LONG_PTR);
-            //SetWindowLongPtrW(hwnd, GWL_EXSTYLE, WS_EX_LAYERED as LONG_PTR);
+            //SetWindowLongPtr(hwnd, GWL_STYLE, WS_POPUP as LONG_PTR);
+            //SetWindowLongPtr(hwnd, GWL_EXSTYLE, WS_EX_LAYERED as LONG_PTR);
             /*
             window.context = RenderContext::new(GetDC(hwnd)).unwrap();
             window.buffer = RenderBuffer::new(&window.context, window.w, window.h).unwrap();
@@ -254,7 +290,6 @@ fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT
 
             window.render().unwrap();
             */
-            ShowWindow(hwnd, SW_SHOW);
         }
 
         WM_CLOSE => {
@@ -277,10 +312,11 @@ fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT
 }
 
 const WM_CREATE_WINDOW: UINT = WM_USER;
-const WM_DESTROY_WINDOW: UINT = WM_USER + 1;
+const WM_SHOW_WINDOW: UINT = WM_USER + 1;
+const WM_DESTROY_WINDOW: UINT = WM_USER + 2;
 
 static WINDOW_THREAD_INIT: Once = ONCE_INIT;
-static mut WINDOW_THREAD_ID: DWORD = 0 as DWORD;
+static mut WINDOW_THREAD_ID: DWORD = 0;
 
 struct CreateWindowParam<'a> {
     builder: &'a WindowBuilder,
@@ -292,10 +328,10 @@ struct DestroyWindowParam {
     tx: Sender<Result<(), Error>>,
 }
 
-unsafe fn window_thread_main() {
+unsafe fn window_thread_main(tx: Sender<()>) {
     let hinstance = GetModuleHandleW(0 as LPCWSTR);
 
-    let class_name = wstr!("HAMMEREDITORWINDOWCLASS");
+    let class_name = wstr!("HAMMERWINDOWCLASS");
 
     let mut wc: WNDCLASSEXW = mem::zeroed();
     wc.cbSize = mem::size_of_val(&wc) as UINT;
@@ -312,6 +348,8 @@ unsafe fn window_thread_main() {
 
     WINDOW_THREAD_ID = GetCurrentThreadId();
 
+    tx.send(()).unwrap();
+
     let mut msg = mem::uninitialized();
     while GetMessageW(&mut msg, 0 as HWND, 0, 0) != 0 {
         match msg.message {
@@ -319,6 +357,11 @@ unsafe fn window_thread_main() {
                 let create_window_param = &*(msg.lParam as *const CreateWindowParam);
                 let result = create_window(hinstance, &class_name, create_window_param.builder);
                 create_window_param.tx.send(result).unwrap();
+            }
+
+            WM_SHOW_WINDOW => {
+                let hwnd = msg.lParam as HWND;
+                ShowWindow(hwnd, SW_SHOW);
             }
 
             WM_DESTROY_WINDOW => {
@@ -340,11 +383,10 @@ unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &W
 
     let state = Box::into_raw(Box::new(WindowState::new(event_tx)));
 
-    let title = wstr!("Hammer Editor");
     CreateWindowExW(
         0,
         class_name.as_ptr(),
-        title.as_ptr(),
+        builder.title.as_ptr(),
         0,
         builder.x, builder.y,
         builder.w, builder.h,

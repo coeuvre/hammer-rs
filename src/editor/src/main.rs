@@ -18,6 +18,7 @@ extern crate user32;
 
 use std::mem;
 use std::ffi::{CString, CStr};
+use std::thread;
 
 use winapi::basetsd::*;
 use winapi::minwindef::*;
@@ -202,16 +203,19 @@ impl RenderBuffer {
 fn main() {
     env_logger::init().unwrap();
 
-    let mut win1 = WindowBuilder::new().build().unwrap();
+    let mut win1 = WindowBuilder::new().title("Window 1").build().unwrap();
     win1.show();
 
-    let mut win2 = WindowBuilder::new().pos(0, 600).build().unwrap();
-    win2.show();
+    let handle = thread::spawn(move || {
+        let mut win2 = WindowBuilder::new().title("Window 2").pos(0, 600).build().unwrap();
+        win2.show();
+
+        win2.wait_for_close();
+        win2.close();
+    });
 
     win1.wait_for_close();
     win1.close();
 
-    win2.wait_for_close();
-    win2.close();
-
+    handle.join().unwrap();
 }
