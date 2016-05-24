@@ -93,7 +93,7 @@ pub struct Window {
     buffer: RenderBuffer,
     */
 
-    quit_rx: Receiver<()>,
+    event_rx: Receiver<Event>,
     state: *const WindowState,
 }
 
@@ -104,8 +104,15 @@ impl Window {
         unsafe { ShowWindow((*self.state).hwnd, SW_SHOW); }
     }
 
-    pub fn wait(&self) {
-        self.quit_rx.recv().unwrap();
+    pub fn wait_for_close(&self) {
+        loop {
+            match self.event_rx.recv().unwrap() {
+                Event::Close => {
+                    info!("Event::Close");
+                    break;
+                }
+            }
+        }
     }
 
     /*
@@ -169,7 +176,7 @@ impl Window {
 }
 
 pub struct WindowState {
-    quit_tx: Option<Sender<()>>,
+    event_tx: Sender<Event>,
 
     hwnd: HWND,
 
@@ -177,6 +184,21 @@ pub struct WindowState {
     y: i32,
     w: i32,
     h: i32,
+}
+
+impl WindowState {
+    fn new(event_tx: Sender<Event>) -> WindowState {
+        WindowState {
+            event_tx: event_tx,
+
+            hwnd: 0 as HWND,
+
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 0,
+        }
+    }
 }
 
 #[allow(unused_variables)]
@@ -214,13 +236,13 @@ fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT
         }
 
         WM_CLOSE => {
-            PostQuitMessage(0);
+            state.event_tx.send(Event::Close).unwrap();
         }
 
         WM_KEYDOWN => {
             let key = wparam as winapi::c_int;
             if key == VK_ESCAPE {
-                PostQuitMessage(0);
+                state.event_tx.send(Event::Close).unwrap();
             }
         }
 
@@ -275,10 +297,9 @@ unsafe fn window_thread_main() {
 }
 
 unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &WindowBuilder) -> Result<Window, Error> {
-    let (quit_tx, quit_rx) = channel();
+    let (event_tx, event_rx) = channel();
 
-    let state: *mut WindowState = Box::into_raw(Box::new(mem::zeroed()));
-    (*state).quit_tx = Some(quit_tx);
+    let state = Box::into_raw(Box::new(WindowState::new(event_tx)));
 
     let title = wstr!("Hammer Editor");
     CreateWindowExW(
@@ -295,7 +316,7 @@ unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &W
     );
 
     let window = Window {
-        quit_rx: quit_rx,
+        event_rx: event_rx,
         state: state,
     };
 

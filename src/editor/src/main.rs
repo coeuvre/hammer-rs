@@ -208,6 +208,6 @@ fn main() {
     let mut win2 = WindowBuilder::new().pos(0, 600).build().unwrap();
     win2.show();
 
-    win1.wait();
-    win2.wait();
+    win1.wait_for_close();
+    win2.wait_for_close();
 }
