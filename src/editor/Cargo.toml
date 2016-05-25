@@ -17,3 +17,6 @@ gdi32-sys = "*"
 kernel32-sys = "*"
 opengl32-sys = "*"
 user32-sys = "*"
+
+[profile.release]
+lto = true

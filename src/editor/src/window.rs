@@ -17,6 +17,8 @@ use kernel32::*;
 use opengl32::*;
 use user32::*;
 
+use gl;
+
 use Error;
 
 macro_rules! wstr {
@@ -213,6 +215,7 @@ pub struct WindowState {
     event_tx: Sender<Event>,
 
     hwnd: HWND,
+    hdc: HDC,
 
     x: i32,
     y: i32,
@@ -226,6 +229,7 @@ impl WindowState {
             event_tx: event_tx,
 
             hwnd: 0 as HWND,
+            hdc: 0 as HDC,
 
             x: 0,
             y: 0,
@@ -282,6 +286,15 @@ fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT
 
             //SetWindowLongPtr(hwnd, GWL_STYLE, WS_POPUP as LONG_PTR);
             //SetWindowLongPtr(hwnd, GWL_EXSTYLE, WS_EX_LAYERED as LONG_PTR);
+
+            OPENGL_CONTEXT_INIT.call_once(|| {
+                create_render_context(hwnd);
+            });
+
+            let hdc = GetDC(hwnd);
+            let pfi = ChoosePixelFormat(hdc, &mut RENDER_CONTEXT.pfd);
+            SetPixelFormat(hdc, pfi, &mut RENDER_CONTEXT.pfd);
+            state.hdc = hdc;
             /*
             window.context = RenderContext::new(GetDC(hwnd)).unwrap();
             window.buffer = RenderBuffer::new(&window.context, window.w, window.h).unwrap();
@@ -290,6 +303,20 @@ fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT
 
             window.render().unwrap();
             */
+        }
+
+        WM_PAINT => {
+            let mut ps = mem::uninitialized();
+            BeginPaint(hwnd, &mut ps);
+
+            RENDER_CONTEXT.make_current(state.hdc);
+            gl::ClearColor(1.0, 0.0, 0.0, 1.0);
+            gl::Clear(gl::COLOR_BUFFER_BIT);
+
+            SwapBuffers(state.hdc);
+            RENDER_CONTEXT.make_not_current();
+
+            EndPaint(hwnd, &ps);
         }
 
         WM_CLOSE => {
@@ -342,9 +369,7 @@ unsafe fn window_thread_main(tx: Sender<()>) {
     wc.lpszClassName = class_name.as_ptr();
     wc.cbWndExtra = mem::size_of::<Window>() as winapi::c_int;
 
-    if RegisterClassExW(&wc) == 0 {
-        panic!("Failed to register window class.");
-    }
+    RegisterClassExW(&wc);
 
     WINDOW_THREAD_ID = GetCurrentThreadId();
 
@@ -366,7 +391,10 @@ unsafe fn window_thread_main(tx: Sender<()>) {
 
             WM_DESTROY_WINDOW => {
                 let destroy_window_param = &*(msg.lParam as *const DestroyWindowParam);
-                DestroyWindow(destroy_window_param.hwnd);
+                let hwnd = destroy_window_param.hwnd;
+                let state = &mut *(GetWindowLongPtr(hwnd, 0) as (*mut WindowState));
+                ReleaseDC(hwnd, state.hdc);
+                DestroyWindow(hwnd);
                 destroy_window_param.tx.send(Ok(())).unwrap();
             }
 
@@ -387,7 +415,7 @@ unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &W
         0,
         class_name.as_ptr(),
         builder.title.as_ptr(),
-        0,
+        WS_OVERLAPPEDWINDOW,
         builder.x, builder.y,
         builder.w, builder.h,
         0 as HWND,
@@ -402,4 +430,81 @@ unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &W
     };
 
     Ok(window)
+}
+
+struct RenderContextWrapper {
+    lib: HMODULE,
+    hglrc: HGLRC,
+    pfd: PIXELFORMATDESCRIPTOR,
+}
+
+impl RenderContextWrapper {
+    pub unsafe fn make_current(&self, hdc: HDC) {
+        wglMakeCurrent(hdc, self.hglrc);
+        gl::load_with(|symbol| {
+            let cstr = CString::new(symbol).unwrap();
+            let mut ptr = wglGetProcAddress(cstr.as_ptr());
+            if ptr == 0 as PROC {
+                ptr = GetProcAddress(self.lib, cstr.as_ptr());
+            }
+            ptr
+        });
+    }
+
+    pub unsafe fn make_not_current(&self) {
+        wglMakeCurrent(0 as HDC, 0 as HGLRC);
+    }
+}
+
+static OPENGL_CONTEXT_INIT: Once = ONCE_INIT;
+static mut RENDER_CONTEXT: RenderContextWrapper = RenderContextWrapper {
+    lib: 0 as HMODULE,
+    hglrc: 0 as HGLRC,
+    pfd: PIXELFORMATDESCRIPTOR {
+        nSize: 0,
+        nVersion: 1,
+        dwFlags: PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
+        iPixelType: PFD_TYPE_RGBA,
+        cColorBits: 32,
+        cRedBits: 0,
+        cRedShift: 0,
+        cGreenBits: 0,
+        cGreenShift: 0,
+        cBlueBits: 0,
+        cBlueShift: 0,
+        cAlphaBits: 0,
+        cAlphaShift: 0,
+        cAccumBits: 0,
+        cAccumRedBits: 0,
+        cAccumGreenBits: 0,
+        cAccumBlueBits: 0,
+        cAccumAlphaBits: 0,
+        cDepthBits: 24,
+        cStencilBits: 8,
+        cAuxBuffers: 0,
+        iLayerType: PFD_MAIN_PLANE,
+        bReserved: 0,
+        dwLayerMask: 0,
+        dwVisibleMask: 0,
+        dwDamageMask: 0,
+    },
+};
+
+unsafe fn create_render_context(hwnd: HWND) {
+    let name = wstr!("opengl32.dll");
+    RENDER_CONTEXT.lib = LoadLibraryW(name.as_ptr());
+    assert!(RENDER_CONTEXT.lib != 0 as HMODULE, "Failed to load opengl32.dll");
+
+    let hdc = GetDC(hwnd);
+
+    RENDER_CONTEXT.pfd.nSize = mem::size_of_val(&RENDER_CONTEXT.pfd) as WORD;
+
+    let pfi = ChoosePixelFormat(hdc, &mut RENDER_CONTEXT.pfd);
+
+    SetPixelFormat(hdc, pfi, &mut RENDER_CONTEXT.pfd);
+
+    RENDER_CONTEXT.hglrc = wglCreateContext(hdc);
+    assert!(RENDER_CONTEXT.hglrc != 0 as HGLRC, "Failed to create rendering context");
+
+    ReleaseDC(hwnd, hdc);
 }

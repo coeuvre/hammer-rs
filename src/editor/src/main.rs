@@ -40,85 +40,7 @@ mod window;
 
 pub type Error = Box<std::error::Error + Send + Sync>;
 
-pub struct RenderContext {
-    lib: HMODULE,
-    hdc: HDC,
-    hglrc: HGLRC,
-    _pfd: PIXELFORMATDESCRIPTOR,
-}
-
-impl RenderContext {
-    pub unsafe fn new(hdc: HDC) -> Result<RenderContext, Error> {
-        let name = wstr!("opengl32.dll");
-        let lib = LoadLibraryW(name.as_ptr());
-        if lib != 0 as HMODULE {
-            let mut pfd: PIXELFORMATDESCRIPTOR = mem::zeroed();
-            pfd.nSize = mem::size_of_val(&pfd) as WORD;
-            pfd.nVersion = 1;
-            pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-            pfd.iPixelType = PFD_TYPE_RGBA;
-            pfd.cColorBits = 32;
-            pfd.cDepthBits = 24;
-            pfd.cStencilBits = 8;
-            pfd.iLayerType = PFD_MAIN_PLANE;
-
-            let pfi = ChoosePixelFormat(hdc, &mut pfd);
-            if pfi != 0 {
-                if SetPixelFormat(hdc, pfi, &mut pfd) != 0 {
-                    let hglrc = wglCreateContext(hdc);
-
-                    if hglrc != 0 as HGLRC {
-                        Ok(RenderContext {
-                            lib: lib,
-                            hdc: hdc,
-                            hglrc: hglrc,
-                            _pfd: pfd,
-                        })
-                    } else {
-                        Err(From::from("Failed to create OpenGL context"))
-                    }
-                } else {
-                    Err(From::from("Failed to set pixel format"))
-                }
-            } else {
-                Err(From::from("Failed to choose pixel format"))
-            }
-        } else {
-            Err(From::from("Failed to load opengl32.dll"))
-        }
-    }
-
-    pub unsafe fn make_current(&self) -> Result<(), Error> {
-        if wglGetCurrentContext() != self.hglrc {
-            if wglMakeCurrent(self.hdc, self.hglrc) != 0 {
-                gl::load_with(|symbol| {
-                    let cstr = CString::new(symbol).unwrap();
-                    let mut ptr = wglGetProcAddress(cstr.as_ptr());
-                    if ptr == 0 as PROC {
-                        ptr = GetProcAddress(self.lib, cstr.as_ptr());
-                    }
-                    ptr
-                });
-                let version = CStr::from_ptr(mem::transmute(gl::GetString(gl::VERSION)));
-                println!("OpenGL Version: {:?}", version);
-                Ok(())
-            } else {
-                Err(From::from("Failed to make context be current"))
-            }
-        } else {
-            Ok(())
-        }
-    }
-
-    pub unsafe fn swap_buffers(&self) {
-        SwapBuffers(self.hdc);
-    }
-
-    pub unsafe fn resize(&mut self, w: i32, h: i32) {
-        gl::Viewport(0, 0, w, h);
-    }
-}
-
+/*
 pub struct RenderBuffer {
     w: i32,
     h: i32,
@@ -199,6 +121,7 @@ impl RenderBuffer {
         }
     }
 }
+*/
 
 fn main() {
     env_logger::init().unwrap();
