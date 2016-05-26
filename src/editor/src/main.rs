@@ -133,11 +133,25 @@ fn main() {
         let mut win2 = WindowBuilder::new().title("Window 2").pos(0, 600).build().unwrap();
         win2.show();
 
-        win2.wait_for_close();
+        // Game like loop
+        'event_loop: loop {
+            for event in win2.poll_events() {
+                match event {
+                    Event::Close => break 'event_loop,
+                }
+            }
+            thread::yield_now();
+        }
+
         win2.close();
     });
 
-    win1.wait_for_close();
+    // GUI like loop
+    for event in win1.wait_events() {
+        match event {
+            Event::Close => break,
+        }
+    }
     win1.close();
 
     handle.join().unwrap();

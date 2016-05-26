@@ -37,7 +37,7 @@ pub enum Event {
 }
 
 pub struct WindowBuilder {
-    title: Vec<u16>,
+    title: String,
     x: i32,
     y: i32,
     w: i32,
@@ -47,7 +47,7 @@ pub struct WindowBuilder {
 impl WindowBuilder {
     pub fn new() -> WindowBuilder {
         WindowBuilder {
-            title: wstr!("Hammer"),
+            title: "Hammer".to_string(),
             x: 0,
             y: 0,
             w: 800,
@@ -56,7 +56,7 @@ impl WindowBuilder {
     }
 
     pub fn title(&mut self, title: &str) -> &mut Self {
-        self.title = wstr!(title);
+        self.title = title.to_string();
         self
     }
 
@@ -119,18 +119,20 @@ impl Window {
         }
     }
 
-    pub fn wait_for_close(&self) {
-        loop {
-            match self.event_rx.recv().unwrap() {
-                Event::Close => {
-                    break;
-                }
-            }
+    pub fn close(self) {
+        drop(self);
+    }
+
+    pub fn poll_events(&self) -> PollEventIter {
+        PollEventIter {
+            window: self,
         }
     }
 
-    pub fn close(self) {
-        drop(self);
+    pub fn wait_events(&self) -> WaitEventIter {
+        WaitEventIter {
+            window: self,
+        }
     }
 
     /*
@@ -191,6 +193,30 @@ impl Window {
                             &mut src_pos, 0, &mut blend, ULW_ALPHA);
     }
     */
+}
+
+pub struct PollEventIter<'a> {
+    window: &'a Window,
+}
+
+impl<'a> Iterator for PollEventIter<'a> {
+    type Item = Event;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.window.event_rx.try_recv().ok()
+    }
+}
+
+pub struct WaitEventIter<'a> {
+    window: &'a Window,
+}
+
+impl<'a> Iterator for WaitEventIter<'a> {
+    type Item = Event;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.window.event_rx.recv().ok()
+    }
 }
 
 impl Drop for Window {
@@ -411,10 +437,11 @@ unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &W
 
     let state = Box::into_raw(Box::new(WindowState::new(event_tx)));
 
+    let title = wstr!(&builder.title);
     CreateWindowExW(
         0,
         class_name.as_ptr(),
-        builder.title.as_ptr(),
+        title.as_ptr(),
         WS_OVERLAPPEDWINDOW,
         builder.x, builder.y,
         builder.w, builder.h,
