@@ -110,8 +110,6 @@ pub struct Window {
     state: *const WindowState,
 }
 
-unsafe impl Send for Window {}
-
 impl Window {
     pub fn show(&mut self) {
         unsafe {
@@ -225,7 +223,7 @@ impl Drop for Window {
 
         unsafe {
             let destroy_window_param = DestroyWindowParam {
-                hwnd: (*self.state).hwnd,
+                window: self,
                 tx: tx,
             };
 
@@ -242,6 +240,7 @@ pub struct WindowState {
 
     hwnd: HWND,
     hdc: HDC,
+    hglrc: HGLRC,
 
     x: i32,
     y: i32,
@@ -256,11 +255,96 @@ impl WindowState {
 
             hwnd: 0 as HWND,
             hdc: 0 as HDC,
+            hglrc: 0 as HGLRC,
 
             x: 0,
             y: 0,
             w: 0,
             h: 0,
+        }
+    }
+
+    pub unsafe fn make_current(&self) {
+        wglMakeCurrent(self.hdc, self.hglrc);
+        gl::load_with(|symbol| {
+            let cstr = CString::new(symbol).unwrap();
+            let mut ptr = wglGetProcAddress(cstr.as_ptr());
+            if ptr == 0 as PROC {
+                ptr = GetProcAddress(OPENGL_LIB, cstr.as_ptr());
+            }
+            ptr
+        });
+    }
+
+    pub unsafe fn make_not_current(&self) {
+        wglMakeCurrent(0 as HDC, 0 as HGLRC);
+    }
+
+}
+
+const WM_CREATE_WINDOW: UINT = WM_USER;
+const WM_SHOW_WINDOW: UINT = WM_USER + 1;
+const WM_DESTROY_WINDOW: UINT = WM_USER + 2;
+
+static WINDOW_THREAD_INIT: Once = ONCE_INIT;
+static mut WINDOW_THREAD_ID: DWORD = 0;
+
+struct CreateWindowParam<'a> {
+    builder: &'a WindowBuilder,
+    tx: Sender<Result<Window, Error>>,
+}
+
+struct DestroyWindowParam<'a> {
+    window: &'a mut Window,
+    tx: Sender<Result<(), Error>>,
+}
+
+unsafe fn window_thread_main(tx: Sender<()>) {
+    let hinstance = GetModuleHandleW(0 as LPCWSTR);
+
+    let class_name = wstr!("HAMMERWINDOWCLASS");
+
+    let mut wc: WNDCLASSEXW = mem::zeroed();
+    wc.cbSize = mem::size_of_val(&wc) as UINT;
+    wc.style = 0;
+    wc.lpfnWndProc = Some(window_proc);
+    wc.hCursor = LoadCursorW(0 as HINSTANCE, winapi::winuser::IDC_ARROW);
+    wc.hInstance = hinstance;
+    wc.lpszClassName = class_name.as_ptr();
+    wc.cbWndExtra = mem::size_of::<Window>() as winapi::c_int;
+
+    RegisterClassExW(&wc);
+
+    WINDOW_THREAD_ID = GetCurrentThreadId();
+
+    tx.send(()).unwrap();
+
+    let mut msg = mem::uninitialized();
+    while GetMessageW(&mut msg, 0 as HWND, 0, 0) != 0 {
+        match msg.message {
+            WM_CREATE_WINDOW => {
+                let create_window_param = &*(msg.lParam as *const CreateWindowParam);
+                let result = create_window(hinstance, &class_name, create_window_param.builder);
+                create_window_param.tx.send(result).unwrap();
+            }
+
+            WM_SHOW_WINDOW => {
+                let hwnd = msg.lParam as HWND;
+                ShowWindow(hwnd, SW_SHOW);
+            }
+
+            WM_DESTROY_WINDOW => {
+                let destroy_window_param = &*(msg.lParam as *const DestroyWindowParam);
+                let state = &*destroy_window_param.window.state;
+                ReleaseDC(state.hwnd, state.hdc);
+                DestroyWindow(state.hwnd);
+                destroy_window_param.tx.send(Ok(())).unwrap();
+            }
+
+            _ => {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
         }
     }
 }
@@ -313,14 +397,9 @@ fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT
             //SetWindowLongPtr(hwnd, GWL_STYLE, WS_POPUP as LONG_PTR);
             //SetWindowLongPtr(hwnd, GWL_EXSTYLE, WS_EX_LAYERED as LONG_PTR);
 
-            OPENGL_CONTEXT_INIT.call_once(|| {
-                create_render_context(hwnd);
-            });
+            state.hdc = GetDC(hwnd);
+            state.hglrc = create_render_context(state.hdc);
 
-            let hdc = GetDC(hwnd);
-            let pfi = ChoosePixelFormat(hdc, &mut RENDER_CONTEXT.pfd);
-            SetPixelFormat(hdc, pfi, &mut RENDER_CONTEXT.pfd);
-            state.hdc = hdc;
             /*
             window.context = RenderContext::new(GetDC(hwnd)).unwrap();
             window.buffer = RenderBuffer::new(&window.context, window.w, window.h).unwrap();
@@ -335,12 +414,12 @@ fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT
             let mut ps = mem::uninitialized();
             BeginPaint(hwnd, &mut ps);
 
-            RENDER_CONTEXT.make_current(state.hdc);
+            state.make_current();
             gl::ClearColor(1.0, 0.0, 0.0, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
 
             SwapBuffers(state.hdc);
-            RENDER_CONTEXT.make_not_current();
+            state.make_not_current();
 
             EndPaint(hwnd, &ps);
         }
@@ -362,74 +441,6 @@ fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT
     }
 
     return 0;
-}
-
-const WM_CREATE_WINDOW: UINT = WM_USER;
-const WM_SHOW_WINDOW: UINT = WM_USER + 1;
-const WM_DESTROY_WINDOW: UINT = WM_USER + 2;
-
-static WINDOW_THREAD_INIT: Once = ONCE_INIT;
-static mut WINDOW_THREAD_ID: DWORD = 0;
-
-struct CreateWindowParam<'a> {
-    builder: &'a WindowBuilder,
-    tx: Sender<Result<Window, Error>>,
-}
-
-struct DestroyWindowParam {
-    hwnd: HWND,
-    tx: Sender<Result<(), Error>>,
-}
-
-unsafe fn window_thread_main(tx: Sender<()>) {
-    let hinstance = GetModuleHandleW(0 as LPCWSTR);
-
-    let class_name = wstr!("HAMMERWINDOWCLASS");
-
-    let mut wc: WNDCLASSEXW = mem::zeroed();
-    wc.cbSize = mem::size_of_val(&wc) as UINT;
-    wc.style = 0;
-    wc.lpfnWndProc = Some(window_proc);
-    wc.hCursor = LoadCursorW(0 as HINSTANCE, winapi::winuser::IDC_ARROW);
-    wc.hInstance = hinstance;
-    wc.lpszClassName = class_name.as_ptr();
-    wc.cbWndExtra = mem::size_of::<Window>() as winapi::c_int;
-
-    RegisterClassExW(&wc);
-
-    WINDOW_THREAD_ID = GetCurrentThreadId();
-
-    tx.send(()).unwrap();
-
-    let mut msg = mem::uninitialized();
-    while GetMessageW(&mut msg, 0 as HWND, 0, 0) != 0 {
-        match msg.message {
-            WM_CREATE_WINDOW => {
-                let create_window_param = &*(msg.lParam as *const CreateWindowParam);
-                let result = create_window(hinstance, &class_name, create_window_param.builder);
-                create_window_param.tx.send(result).unwrap();
-            }
-
-            WM_SHOW_WINDOW => {
-                let hwnd = msg.lParam as HWND;
-                ShowWindow(hwnd, SW_SHOW);
-            }
-
-            WM_DESTROY_WINDOW => {
-                let destroy_window_param = &*(msg.lParam as *const DestroyWindowParam);
-                let hwnd = destroy_window_param.hwnd;
-                let state = &mut *(GetWindowLongPtr(hwnd, 0) as (*mut WindowState));
-                ReleaseDC(hwnd, state.hdc);
-                DestroyWindow(hwnd);
-                destroy_window_param.tx.send(Ok(())).unwrap();
-            }
-
-            _ => {
-                TranslateMessage(&msg);
-                DispatchMessageW(&msg);
-            }
-        }
-    }
 }
 
 unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &WindowBuilder) -> Result<Window, Error> {
@@ -459,79 +470,27 @@ unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &W
     Ok(window)
 }
 
-struct RenderContextWrapper {
-    lib: HMODULE,
-    hglrc: HGLRC,
-    pfd: PIXELFORMATDESCRIPTOR,
-}
+static OPENGL_LIB_INIT: Once = ONCE_INIT;
+static mut OPENGL_LIB: HMODULE = 0 as HMODULE;
 
-impl RenderContextWrapper {
-    pub unsafe fn make_current(&self, hdc: HDC) {
-        wglMakeCurrent(hdc, self.hglrc);
-        gl::load_with(|symbol| {
-            let cstr = CString::new(symbol).unwrap();
-            let mut ptr = wglGetProcAddress(cstr.as_ptr());
-            if ptr == 0 as PROC {
-                ptr = GetProcAddress(self.lib, cstr.as_ptr());
-            }
-            ptr
-        });
-    }
+unsafe fn create_render_context(hdc: HDC) -> HGLRC {
+    OPENGL_LIB_INIT.call_once(|| {
+        let name = wstr!("opengl32.dll");
+        OPENGL_LIB = LoadLibraryW(name.as_ptr());
+        assert!(OPENGL_LIB != 0 as HMODULE, "Failed to load opengl32.dll");
+    });
 
-    pub unsafe fn make_not_current(&self) {
-        wglMakeCurrent(0 as HDC, 0 as HGLRC);
-    }
-}
+    let mut pfd: PIXELFORMATDESCRIPTOR = mem::zeroed();
+    pfd.nSize = mem::size_of_val(&pfd) as WORD;
+    pfd.nVersion = 1;
+    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    pfd.iPixelType = PFD_TYPE_RGBA;
+    pfd.cColorBits = 32;
+    pfd.cDepthBits = 24;
+    pfd.cStencilBits = 8;
+    pfd.iLayerType = PFD_MAIN_PLANE;
+    let pfi = ChoosePixelFormat(hdc, &mut pfd);
+    SetPixelFormat(hdc, pfi, &mut pfd);
 
-static OPENGL_CONTEXT_INIT: Once = ONCE_INIT;
-static mut RENDER_CONTEXT: RenderContextWrapper = RenderContextWrapper {
-    lib: 0 as HMODULE,
-    hglrc: 0 as HGLRC,
-    pfd: PIXELFORMATDESCRIPTOR {
-        nSize: 0,
-        nVersion: 1,
-        dwFlags: PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
-        iPixelType: PFD_TYPE_RGBA,
-        cColorBits: 32,
-        cRedBits: 0,
-        cRedShift: 0,
-        cGreenBits: 0,
-        cGreenShift: 0,
-        cBlueBits: 0,
-        cBlueShift: 0,
-        cAlphaBits: 0,
-        cAlphaShift: 0,
-        cAccumBits: 0,
-        cAccumRedBits: 0,
-        cAccumGreenBits: 0,
-        cAccumBlueBits: 0,
-        cAccumAlphaBits: 0,
-        cDepthBits: 24,
-        cStencilBits: 8,
-        cAuxBuffers: 0,
-        iLayerType: PFD_MAIN_PLANE,
-        bReserved: 0,
-        dwLayerMask: 0,
-        dwVisibleMask: 0,
-        dwDamageMask: 0,
-    },
-};
-
-unsafe fn create_render_context(hwnd: HWND) {
-    let name = wstr!("opengl32.dll");
-    RENDER_CONTEXT.lib = LoadLibraryW(name.as_ptr());
-    assert!(RENDER_CONTEXT.lib != 0 as HMODULE, "Failed to load opengl32.dll");
-
-    let hdc = GetDC(hwnd);
-
-    RENDER_CONTEXT.pfd.nSize = mem::size_of_val(&RENDER_CONTEXT.pfd) as WORD;
-
-    let pfi = ChoosePixelFormat(hdc, &mut RENDER_CONTEXT.pfd);
-
-    SetPixelFormat(hdc, pfi, &mut RENDER_CONTEXT.pfd);
-
-    RENDER_CONTEXT.hglrc = wglCreateContext(hdc);
-    assert!(RENDER_CONTEXT.hglrc != 0 as HGLRC, "Failed to create rendering context");
-
-    ReleaseDC(hwnd, hdc);
+    wglCreateContext(hdc)
 }
