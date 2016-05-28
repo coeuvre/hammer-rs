@@ -33,6 +33,7 @@ macro_rules! wstr {
 }
 
 pub enum Event {
+    Resize { w: i32, h: i32, },
     Close,
 }
 
@@ -263,23 +264,6 @@ impl WindowState {
             h: 0,
         }
     }
-
-    pub unsafe fn make_current(&self) {
-        wglMakeCurrent(self.hdc, self.hglrc);
-        gl::load_with(|symbol| {
-            let cstr = CString::new(symbol).unwrap();
-            let mut ptr = wglGetProcAddress(cstr.as_ptr());
-            if ptr == 0 as PROC {
-                ptr = GetProcAddress(OPENGL_LIB, cstr.as_ptr());
-            }
-            ptr
-        });
-    }
-
-    pub unsafe fn make_not_current(&self) {
-        wglMakeCurrent(0 as HDC, 0 as HGLRC);
-    }
-
 }
 
 const WM_CREATE_WINDOW: UINT = WM_USER;
@@ -410,18 +394,10 @@ fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT
             */
         }
 
-        WM_PAINT => {
-            let mut ps = mem::uninitialized();
-            BeginPaint(hwnd, &mut ps);
-
-            state.make_current();
-            gl::ClearColor(1.0, 0.0, 0.0, 1.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
-
-            SwapBuffers(state.hdc);
-            state.make_not_current();
-
-            EndPaint(hwnd, &ps);
+        WM_SIZE => {
+            let w = LOWORD(lparam as DWORD) as i32;
+            let h = HIWORD(lparam as DWORD) as i32;
+            state.event_tx.send(Event::Resize { w: w, h: h }).unwrap();
         }
 
         WM_CLOSE => {
@@ -471,7 +447,91 @@ unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &W
 }
 
 static OPENGL_LIB_INIT: Once = ONCE_INIT;
+static OPENGL_FUNCTION_INIT: Once = ONCE_INIT;
 static mut OPENGL_LIB: HMODULE = 0 as HMODULE;
+
+thread_local!(static THREAD_CURRENT_CONTEXT: RefCell<HGLRC> = RefCell::new(0 as HGLRC));
+
+pub struct Renderer {
+    hglrc: HGLRC,
+}
+
+impl Renderer {
+    pub fn new() -> Renderer {
+        Renderer {
+            hglrc: 0 as HGLRC,
+        }
+    }
+
+    // One thread can only have one renderer be actived.
+    pub fn active(&mut self, window: &Window) -> Result<RenderContext, Error> {
+        unsafe {
+            if self.hglrc == 0 as HGLRC {
+                self.hglrc = create_render_context((*window.state).hdc);
+            }
+
+            let hglrc = self.hglrc;
+            let result: Result<(), Error> = THREAD_CURRENT_CONTEXT.with(|thread_current_context| {
+                let mut thread_current_context = thread_current_context.borrow_mut();
+                if *thread_current_context == 0 as HGLRC {
+                    *thread_current_context = hglrc;
+                    Ok(())
+                } else {
+                    Err(From::from("Failed to active the renderer, there are another renderer been actived."))
+                }
+            });
+
+            if result.is_err() {
+                return Err(result.unwrap_err());
+            }
+
+            let hdc = (*window.state).hdc;
+            wglMakeCurrent(hdc, self.hglrc);
+
+            // TODO: Make sure that initialize OpenGL function once is enough.
+            OPENGL_FUNCTION_INIT.call_once(|| {
+                gl::load_with(|symbol| {
+                    let cstr = CString::new(symbol).unwrap();
+                    let mut ptr = wglGetProcAddress(cstr.as_ptr());
+                    if ptr == 0 as PROC {
+                        ptr = GetProcAddress(OPENGL_LIB, cstr.as_ptr());
+                    }
+                    ptr
+                });
+            });
+
+            Ok(RenderContext {
+                renderer: self,
+                hdc: hdc,
+            })
+        }
+    }
+}
+
+pub struct RenderContext<'a> {
+    renderer: &'a mut Renderer,
+    hdc: HDC,
+}
+
+impl<'a> RenderContext<'a> {
+    pub fn present(&mut self) {
+        unsafe {
+            SwapBuffers(self.hdc);
+        }
+    }
+}
+
+impl<'a> Drop for RenderContext<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            wglMakeCurrent(0 as HDC, 0 as HGLRC);
+        }
+
+        THREAD_CURRENT_CONTEXT.with(|thread_current_context| {
+            *thread_current_context.borrow_mut() = 0 as HGLRC;
+        });
+    }
+}
 
 unsafe fn create_render_context(hdc: HDC) -> HGLRC {
     OPENGL_LIB_INIT.call_once(|| {

@@ -126,33 +126,64 @@ impl RenderBuffer {
 fn main() {
     env_logger::init().unwrap();
 
-    let mut win1 = WindowBuilder::new().title("Window 1").build().unwrap();
-    win1.show();
+    let thread_handle = thread::spawn(move || {
+        let mut window = WindowBuilder::new().title("Window 2").pos(0, 600).build().unwrap();
+        window.show();
 
-    let handle = thread::spawn(move || {
-        let mut win2 = WindowBuilder::new().title("Window 2").pos(0, 600).build().unwrap();
-        win2.show();
+        let mut renderer = Renderer::new();
+
+        let mut context = renderer.active(&window).unwrap();
+
+        unsafe {
+            gl::ClearColor(1.0, 0.0, 0.0, 1.0);
+            gl::Clear(gl::COLOR_BUFFER_BIT);
+        }
+
+        context.present();
 
         // Game like loop
         'event_loop: loop {
-            for event in win2.poll_events() {
+            for event in window.poll_events() {
                 match event {
                     Event::Close => break 'event_loop,
+                    Event::Resize { w, h } => {
+                        unsafe {
+                            gl::Viewport(0, 0, w, h);
+                            gl::ClearColor(1.0, 0.0, 0.0, 1.0);
+                            gl::Clear(gl::COLOR_BUFFER_BIT);
+                        }
+                        context.present();
+                    }
                 }
             }
             thread::yield_now();
         }
 
-        win2.close();
+        window.close();
     });
 
+    let mut window = WindowBuilder::new().title("Window 1").build().unwrap();
+    window.show();
+
+    let mut renderer = Renderer::new();
+
+    let mut context = renderer.active(&window).unwrap();
+
     // GUI like loop
-    for event in win1.wait_events() {
+    for event in window.wait_events() {
         match event {
             Event::Close => break,
+            Event::Resize { w, h } => {
+                unsafe {
+                    gl::Viewport(0, 0, w, h);
+                    gl::ClearColor(1.0, 0.0, 0.0, 1.0);
+                    gl::Clear(gl::COLOR_BUFFER_BIT);
+                }
+                context.present();
+            }
         }
     }
-    win1.close();
+    window.close();
 
-    handle.join().unwrap();
+    thread_handle.join().unwrap();
 }
