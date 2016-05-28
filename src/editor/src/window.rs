@@ -1,3 +1,4 @@
+use std;
 use std::cell::RefCell;
 use std::ffi::{CString, CStr};
 use std::mem;
@@ -18,6 +19,7 @@ use opengl32::*;
 use user32::*;
 
 use gl;
+use gl::types::*;
 
 use Error;
 
@@ -32,8 +34,9 @@ macro_rules! wstr {
     });
 }
 
+#[derive(Debug)]
 pub enum Event {
-    Resize { w: i32, h: i32, },
+    Resize { x: i32, y: i32, w: i32, h: i32, },
     Close,
 }
 
@@ -101,20 +104,30 @@ impl WindowBuilder {
     }
 }
 
-pub struct Window {
-    /*
-    context: RenderContext,
-    buffer: RenderBuffer,
-    */
+use std::rc::Rc;
 
-    event_rx: Receiver<Event>,
-    state: *const WindowState,
+#[derive(Clone)]
+pub struct Window {
+    inner: Rc<RefCell<WindowInner>>,
 }
 
 impl Window {
     pub fn show(&mut self) {
         unsafe {
-            PostThreadMessageW(WINDOW_THREAD_ID, WM_SHOW_WINDOW, 0, (*self.state).hwnd as LPARAM);
+            let hwnd = (*self.inner.borrow().state).hwnd;
+            PostThreadMessageW(WINDOW_THREAD_ID, WM_SHOW_WINDOW, 0, hwnd as LPARAM);
+        }
+    }
+
+    pub fn poll_events(&self) -> PollEventIter {
+        PollEventIter {
+            window: self.clone(),
+        }
+    }
+
+    pub fn wait_events(&mut self) -> WaitEventIter {
+        WaitEventIter {
+            window: self.clone(),
         }
     }
 
@@ -122,103 +135,40 @@ impl Window {
         drop(self);
     }
 
-    pub fn poll_events(&self) -> PollEventIter {
-        PollEventIter {
-            window: self,
-        }
+    pub fn size(&self) -> (i32, i32) {
+        (self.inner.borrow().w, self.inner.borrow().h)
     }
 
-    pub fn wait_events(&self) -> WaitEventIter {
-        WaitEventIter {
-            window: self,
+    fn handle_event(&self, event: &Event) {
+        match event {
+            &Event::Resize { x, y, w, h } => {
+                let mut window = self.inner.borrow_mut();
+                window.x = x;
+                window.y = y;
+                window.w = w;
+                window.h = h;
+            }
+            _ => {}
         }
     }
+}
 
+pub struct WindowInner {
     /*
-    pub unsafe fn render(&self) -> Result<(), Error> {
-        try!(self.context.make_current());
-
-        gl::BindFramebuffer(gl::FRAMEBUFFER, self.buffer.fbo);
-
-        gl::Enable(gl::FRAMEBUFFER_SRGB);
-        gl::Enable(gl::BLEND);
-        gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
-        gl::BlendEquation(gl::FUNC_ADD);
-
-        gl::Enable(gl::SCISSOR_TEST);
-        gl::Scissor(0, 0, self.w, self.h);
-
-
-        gl::ClearColor(0.3, 0.3, 0.3, 1.0);
-        gl::Clear(gl::COLOR_BUFFER_BIT);
-
-        gl::ReadBuffer(gl::COLOR_ATTACHMENT0);
-        gl::ReadPixels(0, 0, self.buffer.w, self.buffer.h, gl::RGBA, gl::UNSIGNED_BYTE, self.buffer.pixels as *mut std::os::raw::c_void);
-
-        gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-
-        self.copy_buffer_to_window();
-
-        Ok(())
-    }
-
-    unsafe fn copy_buffer_to_window(&self) {
-        const AC_SRC_OVER: u8 = 0x00;
-        const AC_SRC_ALPHA: u8 = 0x01;
-        const ULW_ALPHA: u32 = 0x00000002;
-
-        let mut pos = POINT {
-            x: self.x,
-            y: self.y,
-        };
-        let mut size = SIZE {
-            cx: self.w,
-            cy: self.h,
-        };
-        let mut src_pos = POINT {
-            x: 0,
-            y: 0,
-        };
-        let mut blend = BLENDFUNCTION {
-            BlendOp: AC_SRC_OVER,
-            BlendFlags: 0,
-            SourceConstantAlpha: 255,
-            AlphaFormat: AC_SRC_ALPHA,
-        };
-
-        UpdateLayeredWindow(self.hwnd, GetDC(self.hwnd),
-                            &mut pos, &mut size,
-                            self.buffer.hdc,
-                            &mut src_pos, 0, &mut blend, ULW_ALPHA);
-    }
+    context: RenderContext,
+    buffer: RenderBuffer,
     */
+
+    event_rx: Receiver<Event>,
+    state: *const WindowState,
+
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
 }
 
-pub struct PollEventIter<'a> {
-    window: &'a Window,
-}
-
-impl<'a> Iterator for PollEventIter<'a> {
-    type Item = Event;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.window.event_rx.try_recv().ok()
-    }
-}
-
-pub struct WaitEventIter<'a> {
-    window: &'a Window,
-}
-
-impl<'a> Iterator for WaitEventIter<'a> {
-    type Item = Event;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.window.event_rx.recv().ok()
-    }
-}
-
-impl Drop for Window {
+impl Drop for WindowInner {
     fn drop(&mut self) {
         let (tx, rx) = channel();
 
@@ -236,17 +186,43 @@ impl Drop for Window {
     }
 }
 
+pub struct PollEventIter {
+    window: Window,
+}
+
+impl Iterator for PollEventIter {
+    type Item = Event;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let event = self.window.inner.borrow().event_rx.try_recv().ok();
+        if let Some(ref event) = event {
+            self.window.handle_event(event);
+        }
+        event
+    }
+}
+
+pub struct WaitEventIter {
+    window: Window,
+}
+
+impl Iterator for WaitEventIter {
+    type Item = Event;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let event = self.window.inner.borrow().event_rx.recv().ok();
+        if let Some(ref event) = event {
+            self.window.handle_event(event);
+        }
+        event
+    }
+}
+
 pub struct WindowState {
     event_tx: Sender<Event>,
 
     hwnd: HWND,
     hdc: HDC,
-    hglrc: HGLRC,
-
-    x: i32,
-    y: i32,
-    w: i32,
-    h: i32,
 }
 
 impl WindowState {
@@ -256,12 +232,6 @@ impl WindowState {
 
             hwnd: 0 as HWND,
             hdc: 0 as HDC,
-            hglrc: 0 as HGLRC,
-
-            x: 0,
-            y: 0,
-            w: 0,
-            h: 0,
         }
     }
 }
@@ -279,7 +249,7 @@ struct CreateWindowParam<'a> {
 }
 
 struct DestroyWindowParam<'a> {
-    window: &'a mut Window,
+    window: &'a mut WindowInner,
     tx: Sender<Result<(), Error>>,
 }
 
@@ -373,16 +343,10 @@ fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT
             let mut rect = mem::uninitialized();
             GetWindowRect(hwnd, &mut rect);
 
-            state.x = rect.left;
-            state.y = rect.top;
-            state.w = rect.right - rect.left;
-            state.h = rect.bottom - rect.top;
-
             //SetWindowLongPtr(hwnd, GWL_STYLE, WS_POPUP as LONG_PTR);
             //SetWindowLongPtr(hwnd, GWL_EXSTYLE, WS_EX_LAYERED as LONG_PTR);
 
             state.hdc = GetDC(hwnd);
-            state.hglrc = create_render_context(state.hdc);
 
             /*
             window.context = RenderContext::new(GetDC(hwnd)).unwrap();
@@ -395,9 +359,13 @@ fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT
         }
 
         WM_SIZE => {
-            let w = LOWORD(lparam as DWORD) as i32;
-            let h = HIWORD(lparam as DWORD) as i32;
-            state.event_tx.send(Event::Resize { w: w, h: h }).unwrap();
+            let mut rect = mem::uninitialized();
+            GetWindowRect(hwnd, &mut rect);
+            let x = rect.left;
+            let y = rect.top;
+            let w = rect.right - rect.left;
+            let h = rect.bottom - rect.top;
+            state.event_tx.send(Event::Resize { x: x, y: y, w: w, h: h }).unwrap();
         }
 
         WM_CLOSE => {
@@ -439,8 +407,15 @@ unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &W
     );
 
     let window = Window {
-        event_rx: event_rx,
-        state: state,
+        inner: Rc::new(RefCell::new(WindowInner {
+            event_rx: event_rx,
+            state: state,
+
+            x: builder.x,
+            y: builder.y,
+            w: builder.w,
+            h: builder.h,
+        }))
     };
 
     Ok(window)
@@ -466,8 +441,9 @@ impl Renderer {
     // One thread can only have one renderer be actived.
     pub fn active(&mut self, window: &Window) -> Result<RenderContext, Error> {
         unsafe {
+            let state = &*window.inner.borrow().state;
             if self.hglrc == 0 as HGLRC {
-                self.hglrc = create_render_context((*window.state).hdc);
+                self.hglrc = create_render_context(state.hdc);
             }
 
             let hglrc = self.hglrc;
@@ -485,7 +461,7 @@ impl Renderer {
                 return Err(result.unwrap_err());
             }
 
-            let hdc = (*window.state).hdc;
+            let hdc = state.hdc;
             wglMakeCurrent(hdc, self.hglrc);
 
             // TODO: Make sure that initialize OpenGL function once is enough.
@@ -500,9 +476,25 @@ impl Renderer {
                 });
             });
 
+            let (w, h) = window.size();
+
+            gl::Viewport(0, 0, w, h);
+
+            //let screen_w = GetSystemMetrics(SM_CXSCREEN);
+            //let screen_h = GetSystemMetrics(SM_CYSCREEN);
+            //let buffer = RenderBuffer::new(screen_w, screen_h).unwrap();
+
+            //gl::BindFramebuffer(gl::FRAMEBUFFER, buffer.fbo);
+
+            gl::Enable(gl::FRAMEBUFFER_SRGB);
+            gl::Enable(gl::BLEND);
+            gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
+            gl::BlendEquation(gl::FUNC_ADD);
+
             Ok(RenderContext {
                 renderer: self,
-                hdc: hdc,
+                window: window.clone(),
+                //buffer: buffer,
             })
         }
     }
@@ -510,14 +502,57 @@ impl Renderer {
 
 pub struct RenderContext<'a> {
     renderer: &'a mut Renderer,
-    hdc: HDC,
+    window: Window,
+    //buffer: RenderBuffer,
 }
 
 impl<'a> RenderContext<'a> {
+    pub fn resize(&mut self, w: i32, h: i32) {
+        unsafe {
+            //self.buffer.resize(w, h);
+            gl::Viewport(0, 0, w, h);
+        }
+    }
+
     pub fn present(&mut self) {
         unsafe {
-            SwapBuffers(self.hdc);
+            SwapBuffers((*self.window.inner.borrow().state).hdc);
         }
+        /*
+        unsafe {
+            gl::ReadBuffer(gl::COLOR_ATTACHMENT0);
+            gl::ReadPixels(0, 0, self.buffer.w, self.buffer.h, gl::BGRA, gl::UNSIGNED_BYTE, self.buffer.pixels as *mut std::os::raw::c_void);
+
+            const AC_SRC_OVER: u8 = 0x00;
+            const AC_SRC_ALPHA: u8 = 0x01;
+            const ULW_ALPHA: u32 = 0x00000002;
+
+            let mut pos = POINT {
+                x: self.window.inner.borrow().x,
+                y: self.window.inner.borrow().y,
+            };
+            let mut size = SIZE {
+                cx: self.window.inner.borrow().w,
+                cy: self.window.inner.borrow().h,
+            };
+            let mut src_pos = POINT {
+                x: 0,
+                y: 0,
+            };
+            let mut blend = BLENDFUNCTION {
+                BlendOp: AC_SRC_OVER,
+                BlendFlags: 0,
+                SourceConstantAlpha: 255,
+                AlphaFormat: AC_SRC_ALPHA,
+            };
+
+            let state = &*self.window.inner.borrow().state;
+            UpdateLayeredWindow(state.hwnd, state.hdc,
+                                &mut pos, &mut size,
+                                self.buffer.hdc,
+                                &mut src_pos, 0, &mut blend, ULW_ALPHA);
+        }
+        */
     }
 }
 
@@ -554,3 +589,87 @@ unsafe fn create_render_context(hdc: HDC) -> HGLRC {
 
     wglCreateContext(hdc)
 }
+
+/*
+pub struct RenderBuffer {
+    w: i32,
+    h: i32,
+
+    fbo: GLuint,
+    texture: GLuint,
+
+    hdc: HDC,
+    bi: BITMAPINFO,
+    bitmap: HBITMAP,
+    prev_bitmap: HBITMAP,
+    pixels: *mut BYTE,
+}
+
+impl RenderBuffer {
+    pub unsafe fn new(w: i32, h: i32) -> Result<RenderBuffer, Error> {
+        let hdc = CreateCompatibleDC(0 as HDC);
+
+        let mut bi: BITMAPINFO = mem::uninitialized();
+        bi.bmiHeader.biSize = mem::size_of_val(&bi.bmiHeader) as DWORD;
+        bi.bmiHeader.biBitCount = 32;
+        bi.bmiHeader.biWidth = w;
+        bi.bmiHeader.biHeight = -h;
+        bi.bmiHeader.biCompression = BI_RGB;
+        bi.bmiHeader.biPlanes = 1;
+
+        let mut pixels = mem::uninitialized();
+        let bitmap = CreateDIBSection(hdc, &bi, DIB_RGB_COLORS, &mut pixels, 0 as HANDLE, 0);
+        let prev_bitmap = SelectObject(hdc, bitmap as HGDIOBJ) as HBITMAP;
+
+        let mut fbo = mem::uninitialized();
+        gl::GenFramebuffers(1, &mut fbo);
+
+        gl::BindFramebuffer(gl::FRAMEBUFFER, fbo);
+
+        let mut texture = mem::uninitialized();
+        gl::GenTextures(1, &mut texture);
+        gl::BindTexture(gl::TEXTURE_2D, texture);
+        gl::TexImage2D(gl::TEXTURE_2D, 0, gl::SRGB_ALPHA as i32, w, h, 0, gl::RGBA, gl::UNSIGNED_BYTE, 0 as *const std::os::raw::c_void);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
+        gl::BindTexture(gl::TEXTURE_2D, 0);
+
+        gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, texture, 0);
+
+        gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+
+        Ok(RenderBuffer {
+            w: w,
+            h: h,
+            fbo: fbo,
+            texture: texture,
+            hdc: hdc,
+            bi: bi,
+            bitmap: bitmap,
+            prev_bitmap: prev_bitmap,
+            pixels: pixels as *mut BYTE,
+        })
+    }
+
+    pub unsafe fn resize(&mut self, w: i32, h: i32) {
+        info!("Resize, request: {}x{}, had: {}x{}", w, h, self.w, self.h);
+        if self.w < w || self.h < h {
+            self.w = std::cmp::max(self.w, w);
+            self.h = std::cmp::max(self.h, h);
+
+            self.bi.bmiHeader.biWidth = self.w;
+            self.bi.bmiHeader.biHeight = -self.h;
+            SelectObject(self.hdc, self.prev_bitmap as HGDIOBJ);
+            DeleteObject(self.bitmap as HGDIOBJ);
+            let mut pixels = mem::uninitialized();
+            self.bitmap = CreateDIBSection(self.hdc, &self.bi, DIB_RGB_COLORS, &mut pixels, 0 as HANDLE, 0);
+            self.pixels = pixels as *mut BYTE;
+            self.prev_bitmap = SelectObject(self.hdc, self.bitmap as HGDIOBJ) as HBITMAP;
+
+            gl::BindTexture(gl::TEXTURE_2D, self.texture);
+            gl::TexImage2D(gl::TEXTURE_2D, 0, gl::SRGB_ALPHA as i32, self.w, self.h, 0, gl::RGBA, gl::UNSIGNED_BYTE, 0 as *const std::os::raw::c_void);
+            gl::BindTexture(gl::TEXTURE_2D, 0);
+        }
+    }
+}
+*/

@@ -40,89 +40,6 @@ mod window;
 
 pub type Error = Box<std::error::Error + Send + Sync>;
 
-/*
-pub struct RenderBuffer {
-    w: i32,
-    h: i32,
-
-    fbo: GLuint,
-    texture: GLuint,
-
-    hdc: HDC,
-    bi: BITMAPINFO,
-    bitmap: HBITMAP,
-    prev_bitmap: HBITMAP,
-    pixels: *mut BYTE,
-}
-
-impl RenderBuffer {
-    pub unsafe fn new(context: &RenderContext, w: i32, h: i32) -> Result<RenderBuffer, Error> {
-        try!(context.make_current());
-
-        let hdc = CreateCompatibleDC(0 as HDC);
-
-        let mut bi: BITMAPINFO = mem::uninitialized();
-        bi.bmiHeader.biSize = mem::size_of_val(&bi.bmiHeader) as DWORD;
-        bi.bmiHeader.biBitCount = 32;
-        bi.bmiHeader.biWidth = w;
-        bi.bmiHeader.biHeight = -h;
-        bi.bmiHeader.biCompression = BI_RGB;
-        bi.bmiHeader.biPlanes = 1;
-
-        let mut pixels = mem::uninitialized();
-        let bitmap = CreateDIBSection(hdc, &bi, DIB_RGB_COLORS, &mut pixels, 0 as HANDLE, 0);
-        let prev_bitmap = SelectObject(hdc, bitmap as HGDIOBJ) as HBITMAP;
-
-        let mut fbo = mem::uninitialized();
-        gl::GenFramebuffers(1, &mut fbo);
-
-        gl::BindFramebuffer(gl::FRAMEBUFFER, fbo);
-
-        let mut texture = mem::uninitialized();
-        gl::GenTextures(1, &mut texture);
-        gl::BindTexture(gl::TEXTURE_2D, texture);
-        gl::TexImage2D(gl::TEXTURE_2D, 0, gl::SRGB_ALPHA as i32, w, h, 0, gl::RGBA, gl::UNSIGNED_BYTE, 0 as *const std::os::raw::c_void);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
-        gl::BindTexture(gl::TEXTURE_2D, 0);
-
-        gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, texture, 0);
-
-        gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-
-        Ok(RenderBuffer {
-            w: w,
-            h: h,
-            fbo: fbo,
-            texture: texture,
-            hdc: hdc,
-            bi: bi,
-            bitmap: bitmap,
-            prev_bitmap: prev_bitmap,
-            pixels: pixels as *mut BYTE,
-        })
-    }
-
-    pub unsafe fn resize(&mut self, w: i32, h: i32) {
-        if self.w < w || self.h < h {
-            self.w = w;
-            self.h = h;
-
-            self.bi.bmiHeader.biWidth = w;
-            self.bi.bmiHeader.biHeight = -h;
-            SelectObject(self.hdc, self.prev_bitmap as HGDIOBJ);
-            DeleteObject(self.bitmap as HGDIOBJ);
-            self.bitmap = CreateDIBSection(self.hdc, &self.bi, DIB_RGB_COLORS, &mut (self.pixels as *mut winapi::c_void), 0 as HANDLE, 0);
-            self.prev_bitmap = SelectObject(self.hdc, self.bitmap as HGDIOBJ) as HBITMAP;
-
-            gl::BindTexture(gl::TEXTURE_2D, self.texture);
-            gl::TexImage2D(gl::TEXTURE_2D, 0, gl::SRGB_ALPHA as i32, w, h, 0, gl::RGBA, gl::UNSIGNED_BYTE, 0 as *const std::os::raw::c_void);
-            gl::BindTexture(gl::TEXTURE_2D, 0);
-        }
-    }
-}
-*/
-
 fn main() {
     env_logger::init().unwrap();
 
@@ -134,21 +51,14 @@ fn main() {
 
         let mut context = renderer.active(&window).unwrap();
 
-        unsafe {
-            gl::ClearColor(1.0, 0.0, 0.0, 1.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
-        }
-
-        context.present();
-
         // Game like loop
         'event_loop: loop {
             for event in window.poll_events() {
                 match event {
                     Event::Close => break 'event_loop,
-                    Event::Resize { w, h } => {
+                    Event::Resize { w, h, .. } => {
+                        context.resize(w, h);
                         unsafe {
-                            gl::Viewport(0, 0, w, h);
                             gl::ClearColor(1.0, 0.0, 0.0, 1.0);
                             gl::Clear(gl::COLOR_BUFFER_BIT);
                         }
@@ -173,16 +83,17 @@ fn main() {
     for event in window.wait_events() {
         match event {
             Event::Close => break,
-            Event::Resize { w, h } => {
+            Event::Resize { w, h, .. } => {
+                context.resize(w, h);
                 unsafe {
-                    gl::Viewport(0, 0, w, h);
-                    gl::ClearColor(1.0, 0.0, 0.0, 1.0);
+                    gl::ClearColor(1.0, 1.0, 1.0, 1.0);
                     gl::Clear(gl::COLOR_BUFFER_BIT);
                 }
                 context.present();
             }
         }
     }
+
     window.close();
 
     thread_handle.join().unwrap();
