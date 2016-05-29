@@ -26,9 +26,7 @@ fn main() {
         let mut window = WindowBuilder::new().title("Window 2").pos(0, 600).build().unwrap();
         window.show();
 
-        let mut renderer = Renderer::new();
-
-        let mut context = renderer.active(&window).unwrap();
+        let mut renderer = Renderer::new(&window);
 
         // Game like loop
         'event_loop: loop {
@@ -36,12 +34,12 @@ fn main() {
                 match event {
                     Event::Close => break 'event_loop,
                     Event::Resize { w, h, .. } => {
-                        context.resize(w, h);
+                        renderer.resize(w, h);
                         unsafe {
                             gl::ClearColor(1.0, 0.0, 0.0, 1.0);
                             gl::Clear(gl::COLOR_BUFFER_BIT);
                         }
-                        context.present();
+                        renderer.present();
                     }
                 }
             }
@@ -54,21 +52,19 @@ fn main() {
     let mut window = WindowBuilder::new().title("Window 1").size(640, 480).build().unwrap();
     window.show();
 
-    let mut renderer = Renderer::new();
-
-    let mut context = renderer.active(&window).unwrap();
+    let mut renderer = Renderer::new(&window);
 
     // GUI like loop
     for event in window.wait_events() {
         match event {
             Event::Close => break,
             Event::Resize { w, h, .. } => {
-                context.resize(w, h);
+                renderer.resize(w, h);
                 unsafe {
                     gl::ClearColor(1.0, 1.0, 1.0, 1.0);
                     gl::Clear(gl::COLOR_BUFFER_BIT);
                 }
-                context.present();
+                renderer.present();
             }
         }
     }

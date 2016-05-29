@@ -348,15 +348,6 @@ fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT
             //SetWindowLongPtr(hwnd, GWL_EXSTYLE, WS_EX_LAYERED as LONG_PTR);
 
             state.hdc = GetDC(hwnd);
-
-            /*
-            window.context = RenderContext::new(GetDC(hwnd)).unwrap();
-            window.buffer = RenderBuffer::new(&window.context, window.w, window.h).unwrap();
-
-            window.context.make_current().unwrap();
-
-            window.render().unwrap();
-            */
         }
 
         WM_SIZE => {
@@ -428,40 +419,66 @@ thread_local!(static THREAD_CURRENT_CONTEXT: RefCell<HGLRC> = RefCell::new(0 as 
 
 pub struct Renderer {
     hglrc: HGLRC,
+    hdc: HDC,
 }
 
 impl Renderer {
-    pub fn new() -> Renderer {
-        Renderer {
-            hglrc: 0 as HGLRC,
+    pub fn new(window: &Window) -> Renderer {
+        unsafe {
+            let hdc = window.hdc();
+            Renderer {
+                hglrc: create_render_context(hdc),
+                hdc: hdc,
+            }
+        }
+    }
+
+    pub fn resize(&mut self, w: i32, h: i32) {
+        self.make_current();
+
+        unsafe {
+            //self.buffer.resize(w, h);
+            gl::Viewport(0, 0, w, h);
+        }
+    }
+
+    pub fn present(&mut self) {
+        self.make_current();
+
+        unsafe {
+            SwapBuffers(self.hdc);
         }
     }
 
     // One thread can only have one renderer be actived.
-    pub fn active(&mut self, window: &Window) -> Result<RenderContext, Error> {
+    fn make_current(&mut self) {
         unsafe {
-            let state = &*window.state;
-            if self.hglrc == 0 as HGLRC {
-                self.hglrc = create_render_context(state.hdc);
-            }
-
-            let hglrc = self.hglrc;
-            let result: Result<(), Error> = THREAD_CURRENT_CONTEXT.with(|thread_current_context| {
+            let old_hglrc = THREAD_CURRENT_CONTEXT.with(|thread_current_context| {
                 let mut thread_current_context = thread_current_context.borrow_mut();
                 if *thread_current_context == 0 as HGLRC {
-                    *thread_current_context = hglrc;
-                    Ok(())
+                    wglMakeCurrent(self.hdc, self.hglrc);
+                    *thread_current_context = self.hglrc;
+                    Some(0 as HGLRC)
                 } else {
-                    Err(From::from("Failed to active the renderer, there are another renderer been actived."))
+                    if *thread_current_context == self.hglrc {
+                        None
+                    } else {
+                        let old = *thread_current_context;
+                        wglMakeCurrent(0 as HDC, 0 as HGLRC);
+                        wglMakeCurrent(self.hdc, self.hglrc);
+                        *thread_current_context = self.hglrc;
+                        Some(old)
+                    }
                 }
             });
 
-            if result.is_err() {
-                return Err(result.unwrap_err());
+            if let Some(old) = old_hglrc {
+                info!("Thread {} has changed current context from {:?} to {:?}",
+                      thread::current().name().unwrap_or(&GetCurrentThreadId().to_string()),
+                      old, self.hglrc);
+            } else {
+                return;
             }
-
-            let hdc = state.hdc;
-            wglMakeCurrent(hdc, self.hglrc);
 
             // TODO: Make sure that initialize OpenGL function once is enough.
             OPENGL_FUNCTION_INIT.call_once(|| {
@@ -475,94 +492,29 @@ impl Renderer {
                 });
             });
 
-            let (w, h) = window.size();
-
-            gl::Viewport(0, 0, w, h);
-
-            //let screen_w = GetSystemMetrics(SM_CXSCREEN);
-            //let screen_h = GetSystemMetrics(SM_CYSCREEN);
-            //let buffer = RenderBuffer::new(screen_w, screen_h).unwrap();
-
-            //gl::BindFramebuffer(gl::FRAMEBUFFER, buffer.fbo);
-
             gl::Enable(gl::FRAMEBUFFER_SRGB);
             gl::Enable(gl::BLEND);
             gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
             gl::BlendEquation(gl::FUNC_ADD);
-
-            Ok(RenderContext {
-                renderer: self,
-                hdc: window.hdc(),
-                //buffer: buffer,
-            })
         }
     }
 }
 
-pub struct RenderContext<'a> {
-    renderer: &'a mut Renderer,
-    hdc: HDC,
-    //buffer: RenderBuffer,
-}
-
-impl<'a> RenderContext<'a> {
-    pub fn resize(&mut self, w: i32, h: i32) {
-        unsafe {
-            //self.buffer.resize(w, h);
-            gl::Viewport(0, 0, w, h);
-        }
-    }
-
-    pub fn present(&mut self) {
-        unsafe {
-            SwapBuffers(self.hdc);
-        }
-        /*
-        unsafe {
-            gl::ReadBuffer(gl::COLOR_ATTACHMENT0);
-            gl::ReadPixels(0, 0, self.buffer.w, self.buffer.h, gl::BGRA, gl::UNSIGNED_BYTE, self.buffer.pixels as *mut std::os::raw::c_void);
-
-            const AC_SRC_OVER: u8 = 0x00;
-            const AC_SRC_ALPHA: u8 = 0x01;
-            const ULW_ALPHA: u32 = 0x00000002;
-
-            let mut pos = POINT {
-                x: self.window.inner.borrow().x,
-                y: self.window.inner.borrow().y,
-            };
-            let mut size = SIZE {
-                cx: self.window.inner.borrow().w,
-                cy: self.window.inner.borrow().h,
-            };
-            let mut src_pos = POINT {
-                x: 0,
-                y: 0,
-            };
-            let mut blend = BLENDFUNCTION {
-                BlendOp: AC_SRC_OVER,
-                BlendFlags: 0,
-                SourceConstantAlpha: 255,
-                AlphaFormat: AC_SRC_ALPHA,
-            };
-
-            let state = &*self.window.inner.borrow().state;
-            UpdateLayeredWindow(state.hwnd, state.hdc,
-                                &mut pos, &mut size,
-                                self.buffer.hdc,
-                                &mut src_pos, 0, &mut blend, ULW_ALPHA);
-        }
-        */
-    }
-}
-
-impl<'a> Drop for RenderContext<'a> {
+impl Drop for Renderer {
     fn drop(&mut self) {
-        unsafe {
-            wglMakeCurrent(0 as HDC, 0 as HGLRC);
-        }
-
         THREAD_CURRENT_CONTEXT.with(|thread_current_context| {
-            *thread_current_context.borrow_mut() = 0 as HGLRC;
+            let mut thread_current_context = thread_current_context.borrow_mut();
+            if *thread_current_context == self.hglrc {
+                unsafe {
+                    wglMakeCurrent(0 as HDC, 0 as HGLRC);
+                }
+
+                *thread_current_context = 0 as HGLRC;
+
+                info!("Thread {} has changed current context from {:?} to {:?}",
+                      thread::current().name().unwrap_or(&unsafe { GetCurrentThreadId() }.to_string()),
+                      self.hglrc, 0 as HGLRC);
+            }
         });
     }
 }
@@ -588,87 +540,3 @@ unsafe fn create_render_context(hdc: HDC) -> HGLRC {
 
     wglCreateContext(hdc)
 }
-
-/*
-pub struct RenderBuffer {
-    w: i32,
-    h: i32,
-
-    fbo: GLuint,
-    texture: GLuint,
-
-    hdc: HDC,
-    bi: BITMAPINFO,
-    bitmap: HBITMAP,
-    prev_bitmap: HBITMAP,
-    pixels: *mut BYTE,
-}
-
-impl RenderBuffer {
-    pub unsafe fn new(w: i32, h: i32) -> Result<RenderBuffer, Error> {
-        let hdc = CreateCompatibleDC(0 as HDC);
-
-        let mut bi: BITMAPINFO = mem::uninitialized();
-        bi.bmiHeader.biSize = mem::size_of_val(&bi.bmiHeader) as DWORD;
-        bi.bmiHeader.biBitCount = 32;
-        bi.bmiHeader.biWidth = w;
-        bi.bmiHeader.biHeight = -h;
-        bi.bmiHeader.biCompression = BI_RGB;
-        bi.bmiHeader.biPlanes = 1;
-
-        let mut pixels = mem::uninitialized();
-        let bitmap = CreateDIBSection(hdc, &bi, DIB_RGB_COLORS, &mut pixels, 0 as HANDLE, 0);
-        let prev_bitmap = SelectObject(hdc, bitmap as HGDIOBJ) as HBITMAP;
-
-        let mut fbo = mem::uninitialized();
-        gl::GenFramebuffers(1, &mut fbo);
-
-        gl::BindFramebuffer(gl::FRAMEBUFFER, fbo);
-
-        let mut texture = mem::uninitialized();
-        gl::GenTextures(1, &mut texture);
-        gl::BindTexture(gl::TEXTURE_2D, texture);
-        gl::TexImage2D(gl::TEXTURE_2D, 0, gl::SRGB_ALPHA as i32, w, h, 0, gl::RGBA, gl::UNSIGNED_BYTE, 0 as *const std::os::raw::c_void);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
-        gl::BindTexture(gl::TEXTURE_2D, 0);
-
-        gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, texture, 0);
-
-        gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-
-        Ok(RenderBuffer {
-            w: w,
-            h: h,
-            fbo: fbo,
-            texture: texture,
-            hdc: hdc,
-            bi: bi,
-            bitmap: bitmap,
-            prev_bitmap: prev_bitmap,
-            pixels: pixels as *mut BYTE,
-        })
-    }
-
-    pub unsafe fn resize(&mut self, w: i32, h: i32) {
-        info!("Resize, request: {}x{}, had: {}x{}", w, h, self.w, self.h);
-        if self.w < w || self.h < h {
-            self.w = std::cmp::max(self.w, w);
-            self.h = std::cmp::max(self.h, h);
-
-            self.bi.bmiHeader.biWidth = self.w;
-            self.bi.bmiHeader.biHeight = -self.h;
-            SelectObject(self.hdc, self.prev_bitmap as HGDIOBJ);
-            DeleteObject(self.bitmap as HGDIOBJ);
-            let mut pixels = mem::uninitialized();
-            self.bitmap = CreateDIBSection(self.hdc, &self.bi, DIB_RGB_COLORS, &mut pixels, 0 as HANDLE, 0);
-            self.pixels = pixels as *mut BYTE;
-            self.prev_bitmap = SelectObject(self.hdc, self.bitmap as HGDIOBJ) as HBITMAP;
-
-            gl::BindTexture(gl::TEXTURE_2D, self.texture);
-            gl::TexImage2D(gl::TEXTURE_2D, 0, gl::SRGB_ALPHA as i32, self.w, self.h, 0, gl::RGBA, gl::UNSIGNED_BYTE, 0 as *const std::os::raw::c_void);
-            gl::BindTexture(gl::TEXTURE_2D, 0);
-        }
-    }
-}
-*/
