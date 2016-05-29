@@ -1,3 +1,9 @@
+extern crate winapi;
+extern crate gdi32;
+extern crate kernel32;
+extern crate opengl32;
+extern crate user32;
+
 use std;
 use std::cell::RefCell;
 use std::ffi::{CString, CStr};
@@ -6,17 +12,16 @@ use std::sync::*;
 use std::sync::mpsc::*;
 use std::thread;
 
-use winapi;
-use winapi::basetsd::*;
-use winapi::minwindef::*;
-use winapi::windef::*;
-use winapi::wingdi::*;
-use winapi::winnt::*;
-use winapi::winuser::*;
-use gdi32::*;
-use kernel32::*;
-use opengl32::*;
-use user32::*;
+use self::winapi::basetsd::*;
+use self::winapi::minwindef::*;
+use self::winapi::windef::*;
+use self::winapi::wingdi::*;
+use self::winapi::winnt::*;
+use self::winapi::winuser::*;
+use self::gdi32::*;
+use self::kernel32::*;
+use self::opengl32::*;
+use self::user32::*;
 
 use gl;
 use gl::types::*;
@@ -106,59 +111,7 @@ impl WindowBuilder {
 
 use std::rc::Rc;
 
-#[derive(Clone)]
 pub struct Window {
-    inner: Rc<RefCell<WindowInner>>,
-}
-
-impl Window {
-    pub fn show(&mut self) {
-        unsafe {
-            let hwnd = (*self.inner.borrow().state).hwnd;
-            PostThreadMessageW(WINDOW_THREAD_ID, WM_SHOW_WINDOW, 0, hwnd as LPARAM);
-        }
-    }
-
-    pub fn poll_events(&self) -> PollEventIter {
-        PollEventIter {
-            window: self.clone(),
-        }
-    }
-
-    pub fn wait_events(&mut self) -> WaitEventIter {
-        WaitEventIter {
-            window: self.clone(),
-        }
-    }
-
-    pub fn close(self) {
-        drop(self);
-    }
-
-    pub fn size(&self) -> (i32, i32) {
-        (self.inner.borrow().w, self.inner.borrow().h)
-    }
-
-    fn handle_event(&self, event: &Event) {
-        match event {
-            &Event::Resize { x, y, w, h } => {
-                let mut window = self.inner.borrow_mut();
-                window.x = x;
-                window.y = y;
-                window.w = w;
-                window.h = h;
-            }
-            _ => {}
-        }
-    }
-}
-
-pub struct WindowInner {
-    /*
-    context: RenderContext,
-    buffer: RenderBuffer,
-    */
-
     event_rx: Receiver<Event>,
     state: *const WindowState,
 
@@ -168,7 +121,55 @@ pub struct WindowInner {
     h: i32,
 }
 
-impl Drop for WindowInner {
+impl Window {
+    pub fn show(&mut self) {
+        unsafe {
+            PostThreadMessageW(WINDOW_THREAD_ID, WM_SHOW_WINDOW, 0, self.hwnd() as LPARAM);
+        }
+    }
+
+    pub fn poll_events(&mut self) -> PollEventIter {
+        PollEventIter {
+            window: self,
+        }
+    }
+
+    pub fn wait_events(&mut self) -> WaitEventIter {
+        WaitEventIter {
+            window: self,
+        }
+    }
+
+    pub fn close(self) {
+        drop(self);
+    }
+
+    pub fn size(&self) -> (i32, i32) {
+        (self.w, self.h)
+    }
+
+    fn handle_event(&mut self, event: &Event) {
+        match event {
+            &Event::Resize { x, y, w, h } => {
+                self.x = x;
+                self.y = y;
+                self.w = w;
+                self.h = h;
+            }
+            _ => {}
+        }
+    }
+
+    unsafe fn hwnd(&self) -> HWND {
+        (*self.state).hwnd
+    }
+
+    unsafe fn hdc(&self) -> HDC {
+        (*self.state).hdc
+    }
+}
+
+impl Drop for Window {
     fn drop(&mut self) {
         let (tx, rx) = channel();
 
@@ -186,15 +187,15 @@ impl Drop for WindowInner {
     }
 }
 
-pub struct PollEventIter {
-    window: Window,
+pub struct PollEventIter<'a> {
+    window: &'a mut Window,
 }
 
-impl Iterator for PollEventIter {
+impl<'a> Iterator for PollEventIter<'a> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let event = self.window.inner.borrow().event_rx.try_recv().ok();
+        let event = self.window.event_rx.try_recv().ok();
         if let Some(ref event) = event {
             self.window.handle_event(event);
         }
@@ -202,15 +203,15 @@ impl Iterator for PollEventIter {
     }
 }
 
-pub struct WaitEventIter {
-    window: Window,
+pub struct WaitEventIter<'a> {
+    window: &'a mut Window,
 }
 
-impl Iterator for WaitEventIter {
+impl<'a> Iterator for WaitEventIter<'a> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let event = self.window.inner.borrow().event_rx.recv().ok();
+        let event = self.window.event_rx.recv().ok();
         if let Some(ref event) = event {
             self.window.handle_event(event);
         }
@@ -249,7 +250,7 @@ struct CreateWindowParam<'a> {
 }
 
 struct DestroyWindowParam<'a> {
-    window: &'a mut WindowInner,
+    window: &'a mut Window,
     tx: Sender<Result<(), Error>>,
 }
 
@@ -407,15 +408,13 @@ unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &W
     );
 
     let window = Window {
-        inner: Rc::new(RefCell::new(WindowInner {
-            event_rx: event_rx,
-            state: state,
+        event_rx: event_rx,
+        state: state,
 
-            x: builder.x,
-            y: builder.y,
-            w: builder.w,
-            h: builder.h,
-        }))
+        x: builder.x,
+        y: builder.y,
+        w: builder.w,
+        h: builder.h,
     };
 
     Ok(window)
@@ -441,7 +440,7 @@ impl Renderer {
     // One thread can only have one renderer be actived.
     pub fn active(&mut self, window: &Window) -> Result<RenderContext, Error> {
         unsafe {
-            let state = &*window.inner.borrow().state;
+            let state = &*window.state;
             if self.hglrc == 0 as HGLRC {
                 self.hglrc = create_render_context(state.hdc);
             }
@@ -493,7 +492,7 @@ impl Renderer {
 
             Ok(RenderContext {
                 renderer: self,
-                window: window.clone(),
+                hdc: window.hdc(),
                 //buffer: buffer,
             })
         }
@@ -502,7 +501,7 @@ impl Renderer {
 
 pub struct RenderContext<'a> {
     renderer: &'a mut Renderer,
-    window: Window,
+    hdc: HDC,
     //buffer: RenderBuffer,
 }
 
@@ -516,7 +515,7 @@ impl<'a> RenderContext<'a> {
 
     pub fn present(&mut self) {
         unsafe {
-            SwapBuffers((*self.window.inner.borrow().state).hdc);
+            SwapBuffers(self.hdc);
         }
         /*
         unsafe {

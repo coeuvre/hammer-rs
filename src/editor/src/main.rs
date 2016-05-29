@@ -10,28 +10,7 @@ extern crate gl;
 extern crate log;
 extern crate env_logger;
 
-extern crate winapi;
-extern crate gdi32;
-extern crate kernel32;
-extern crate opengl32;
-extern crate user32;
-
-use std::mem;
-use std::ffi::{CString, CStr};
 use std::thread;
-
-use winapi::basetsd::*;
-use winapi::minwindef::*;
-use winapi::windef::*;
-use winapi::wingdi::*;
-use winapi::winnt::*;
-use winapi::winuser::*;
-use gdi32::*;
-use kernel32::*;
-use opengl32::*;
-use user32::*;
-
-use gl::types::*;
 
 use window::*;
 
@@ -72,7 +51,7 @@ fn main() {
         window.close();
     });
 
-    let mut window = WindowBuilder::new().title("Window 1").build().unwrap();
+    let mut window = WindowBuilder::new().title("Window 1").size(640, 480).build().unwrap();
     window.show();
 
     let mut renderer = Renderer::new();
