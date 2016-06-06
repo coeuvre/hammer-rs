@@ -442,6 +442,15 @@ impl Renderer {
         }
     }
 
+    pub fn clear(&mut self, r: f32, g: f32, b: f32, a: f32) {
+        self.make_current();
+        
+        unsafe {
+            gl::ClearColor(r, g, b, a);
+            gl::Clear(gl::COLOR_BUFFER_BIT);
+        }
+    }
+
     pub fn present(&mut self) {
         self.make_current();
 
@@ -450,53 +459,47 @@ impl Renderer {
         }
     }
 
-    // One thread can only have one renderer be actived.
+    // One thread can only have one renderer be _current_.
     fn make_current(&mut self) {
         unsafe {
-            let old_hglrc = THREAD_CURRENT_CONTEXT.with(|thread_current_context| {
+            if let Some(old_hglrc) = THREAD_CURRENT_CONTEXT.with(|thread_current_context| {
                 let mut thread_current_context = thread_current_context.borrow_mut();
-                if *thread_current_context == 0 as HGLRC {
+                if *thread_current_context == self.hglrc {
+                    None
+                } else {
+                    let old = *thread_current_context;
+                    wglMakeCurrent(0 as HDC, 0 as HGLRC);
                     wglMakeCurrent(self.hdc, self.hglrc);
                     *thread_current_context = self.hglrc;
-                    Some(0 as HGLRC)
-                } else {
-                    if *thread_current_context == self.hglrc {
-                        None
-                    } else {
-                        let old = *thread_current_context;
-                        wglMakeCurrent(0 as HDC, 0 as HGLRC);
-                        wglMakeCurrent(self.hdc, self.hglrc);
-                        *thread_current_context = self.hglrc;
-                        Some(old)
-                    }
+                    Some(old)
                 }
-            });
+            }) {
+                Renderer::context_changed(old_hglrc, self.hglrc);
 
-            if let Some(old) = old_hglrc {
-                info!("Thread {} has changed current context from {:?} to {:?}",
-                      thread::current().name().unwrap_or(&GetCurrentThreadId().to_string()),
-                      old, self.hglrc);
-            } else {
-                return;
-            }
-
-            // TODO: Make sure that initialize OpenGL function once is enough.
-            OPENGL_FUNCTION_INIT.call_once(|| {
-                gl::load_with(|symbol| {
-                    let cstr = CString::new(symbol).unwrap();
-                    let mut ptr = wglGetProcAddress(cstr.as_ptr());
-                    if ptr == 0 as PROC {
-                        ptr = GetProcAddress(OPENGL_LIB, cstr.as_ptr());
-                    }
-                    ptr
+                // TODO: Make sure that initialize OpenGL function once is enough.
+                OPENGL_FUNCTION_INIT.call_once(|| {
+                    gl::load_with(|symbol| {
+                        let cstr = CString::new(symbol).unwrap();
+                        let mut ptr = wglGetProcAddress(cstr.as_ptr());
+                        if ptr == 0 as PROC {
+                            ptr = GetProcAddress(OPENGL_LIB, cstr.as_ptr());
+                        }
+                        ptr
+                    });
                 });
-            });
 
-            gl::Enable(gl::FRAMEBUFFER_SRGB);
-            gl::Enable(gl::BLEND);
-            gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
-            gl::BlendEquation(gl::FUNC_ADD);
+                gl::Enable(gl::FRAMEBUFFER_SRGB);
+                gl::Enable(gl::BLEND);
+                gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
+                gl::BlendEquation(gl::FUNC_ADD);
+            }
         }
+    }
+
+    fn context_changed(old: HGLRC, new: HGLRC) {
+        info!("Thread {} has changed current context from {:?} to {:?}",
+              thread::current().name().unwrap_or(& unsafe { GetCurrentThreadId() }.to_string()),
+              old, new);
     }
 }
 
@@ -511,9 +514,7 @@ impl Drop for Renderer {
 
                 *thread_current_context = 0 as HGLRC;
 
-                info!("Thread {} has changed current context from {:?} to {:?}",
-                      thread::current().name().unwrap_or(&unsafe { GetCurrentThreadId() }.to_string()),
-                      self.hglrc, 0 as HGLRC);
+                Renderer::context_changed(self.hglrc, 0 as HGLRC);
             }
         });
     }

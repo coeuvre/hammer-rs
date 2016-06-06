@@ -34,16 +34,13 @@ fn main() {
                 match event {
                     Event::Close => break 'event_loop,
                     Event::Resize { w, h, .. } => {
-                        renderer.resize(w, h);
-                        unsafe {
-                            gl::ClearColor(1.0, 0.0, 0.0, 1.0);
-                            gl::Clear(gl::COLOR_BUFFER_BIT);
-                        }
-                        renderer.present();
+                        // renderer.resize(w, h);
                     }
                 }
             }
-            thread::yield_now();
+
+            renderer.clear(1.0, 0.0, 0.0, 1.0);
+            renderer.present();
         }
 
         window.close();
@@ -60,10 +57,7 @@ fn main() {
             Event::Close => break,
             Event::Resize { w, h, .. } => {
                 renderer.resize(w, h);
-                unsafe {
-                    gl::ClearColor(1.0, 1.0, 1.0, 1.0);
-                    gl::Clear(gl::COLOR_BUFFER_BIT);
-                }
+                renderer.clear(1.0, 1.0, 1.0, 1.0);
                 renderer.present();
             }
         }
