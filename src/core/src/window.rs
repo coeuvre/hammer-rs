@@ -4,13 +4,14 @@ extern crate kernel32;
 extern crate opengl32;
 extern crate user32;
 
-use std;
 use std::cell::RefCell;
-use std::ffi::{CString, CStr};
+use std::ffi::CString;
 use std::mem;
 use std::sync::*;
 use std::sync::mpsc::*;
 use std::thread;
+
+use gl;
 
 use self::winapi::basetsd::*;
 use self::winapi::minwindef::*;
@@ -22,9 +23,6 @@ use self::gdi32::*;
 use self::kernel32::*;
 use self::opengl32::*;
 use self::user32::*;
-
-use gl;
-use gl::types::*;
 
 use Error;
 
@@ -109,8 +107,6 @@ impl WindowBuilder {
     }
 }
 
-use std::rc::Rc;
-
 pub struct Window {
     event_rx: Receiver<Event>,
     state: *const WindowState,
@@ -122,6 +118,16 @@ pub struct Window {
 }
 
 impl Window {
+    pub fn create_render_context(&self) -> RenderContext {
+        unsafe {
+            let hdc = self.hdc();
+            RenderContext {
+                hglrc: create_render_context(hdc),
+                hdc: hdc,
+            }
+        }
+    }
+
     pub fn show(&mut self) {
         unsafe {
             PostThreadMessageW(WINDOW_THREAD_ID, WM_SHOW_WINDOW, 0, self.hwnd() as LPARAM);
@@ -234,6 +240,79 @@ impl WindowState {
             hwnd: 0 as HWND,
             hdc: 0 as HDC,
         }
+    }
+}
+
+thread_local!(static THREAD_CURRENT_CONTEXT: RefCell<HGLRC> = RefCell::new(0 as HGLRC));
+
+pub struct RenderContext {
+    hglrc: HGLRC,
+    hdc: HDC,
+}
+
+impl RenderContext {
+    // One thread can only have one renderer be _current_.
+    pub fn make_current(&mut self) {
+        unsafe {
+            if let Some(old_hglrc) = THREAD_CURRENT_CONTEXT.with(|thread_current_context| {
+                let mut thread_current_context = thread_current_context.borrow_mut();
+                if *thread_current_context == self.hglrc {
+                    None
+                } else {
+                    let old = *thread_current_context;
+                    wglMakeCurrent(0 as HDC, 0 as HGLRC);
+                    wglMakeCurrent(self.hdc, self.hglrc);
+                    *thread_current_context = self.hglrc;
+                    Some(old)
+                }
+            }) {
+                Self::context_changed(old_hglrc, self.hglrc);
+
+                // TODO: Make sure that initialize OpenGL function once is enough.
+                OPENGL_FUNCTION_INIT.call_once(|| {
+                    gl::load_with(|symbol| {
+                        let cstr = CString::new(symbol).unwrap();
+                        let mut ptr = wglGetProcAddress(cstr.as_ptr());
+                        if ptr == 0 as PROC {
+                            ptr = GetProcAddress(OPENGL_LIB, cstr.as_ptr());
+                        }
+                        ptr
+                    });
+                });
+
+                gl::Enable(gl::FRAMEBUFFER_SRGB);
+                gl::Enable(gl::BLEND);
+                gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
+                gl::BlendEquation(gl::FUNC_ADD);
+            }
+        }
+    }
+
+    pub fn swap_buffers(&mut self) {
+        unsafe { SwapBuffers(self.hdc); }
+    }
+
+    fn context_changed(old: HGLRC, new: HGLRC) {
+        info!("Thread {} has changed current context from {:?} to {:?}",
+              thread::current().name().unwrap_or(& unsafe { GetCurrentThreadId() }.to_string()),
+              old, new);
+    }
+}
+
+impl Drop for RenderContext {
+    fn drop(&mut self) {
+        THREAD_CURRENT_CONTEXT.with(|thread_current_context| {
+            let mut thread_current_context = thread_current_context.borrow_mut();
+            if *thread_current_context == self.hglrc {
+                unsafe {
+                    wglMakeCurrent(0 as HDC, 0 as HGLRC);
+                }
+
+                *thread_current_context = 0 as HGLRC;
+
+                Self::context_changed(self.hglrc, 0 as HGLRC);
+            }
+        });
     }
 }
 
@@ -414,111 +493,6 @@ unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &W
 static OPENGL_LIB_INIT: Once = ONCE_INIT;
 static OPENGL_FUNCTION_INIT: Once = ONCE_INIT;
 static mut OPENGL_LIB: HMODULE = 0 as HMODULE;
-
-thread_local!(static THREAD_CURRENT_CONTEXT: RefCell<HGLRC> = RefCell::new(0 as HGLRC));
-
-pub struct Renderer {
-    hglrc: HGLRC,
-    hdc: HDC,
-}
-
-impl Renderer {
-    pub fn new(window: &Window) -> Renderer {
-        unsafe {
-            let hdc = window.hdc();
-            Renderer {
-                hglrc: create_render_context(hdc),
-                hdc: hdc,
-            }
-        }
-    }
-
-    pub fn resize(&mut self, w: i32, h: i32) {
-        self.make_current();
-
-        unsafe {
-            //self.buffer.resize(w, h);
-            gl::Viewport(0, 0, w, h);
-        }
-    }
-
-    pub fn clear(&mut self, r: f32, g: f32, b: f32, a: f32) {
-        self.make_current();
-        
-        unsafe {
-            gl::ClearColor(r, g, b, a);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
-        }
-    }
-
-    pub fn present(&mut self) {
-        self.make_current();
-
-        unsafe {
-            SwapBuffers(self.hdc);
-        }
-    }
-
-    // One thread can only have one renderer be _current_.
-    fn make_current(&mut self) {
-        unsafe {
-            if let Some(old_hglrc) = THREAD_CURRENT_CONTEXT.with(|thread_current_context| {
-                let mut thread_current_context = thread_current_context.borrow_mut();
-                if *thread_current_context == self.hglrc {
-                    None
-                } else {
-                    let old = *thread_current_context;
-                    wglMakeCurrent(0 as HDC, 0 as HGLRC);
-                    wglMakeCurrent(self.hdc, self.hglrc);
-                    *thread_current_context = self.hglrc;
-                    Some(old)
-                }
-            }) {
-                Renderer::context_changed(old_hglrc, self.hglrc);
-
-                // TODO: Make sure that initialize OpenGL function once is enough.
-                OPENGL_FUNCTION_INIT.call_once(|| {
-                    gl::load_with(|symbol| {
-                        let cstr = CString::new(symbol).unwrap();
-                        let mut ptr = wglGetProcAddress(cstr.as_ptr());
-                        if ptr == 0 as PROC {
-                            ptr = GetProcAddress(OPENGL_LIB, cstr.as_ptr());
-                        }
-                        ptr
-                    });
-                });
-
-                gl::Enable(gl::FRAMEBUFFER_SRGB);
-                gl::Enable(gl::BLEND);
-                gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
-                gl::BlendEquation(gl::FUNC_ADD);
-            }
-        }
-    }
-
-    fn context_changed(old: HGLRC, new: HGLRC) {
-        info!("Thread {} has changed current context from {:?} to {:?}",
-              thread::current().name().unwrap_or(& unsafe { GetCurrentThreadId() }.to_string()),
-              old, new);
-    }
-}
-
-impl Drop for Renderer {
-    fn drop(&mut self) {
-        THREAD_CURRENT_CONTEXT.with(|thread_current_context| {
-            let mut thread_current_context = thread_current_context.borrow_mut();
-            if *thread_current_context == self.hglrc {
-                unsafe {
-                    wglMakeCurrent(0 as HDC, 0 as HGLRC);
-                }
-
-                *thread_current_context = 0 as HGLRC;
-
-                Renderer::context_changed(self.hglrc, 0 as HGLRC);
-            }
-        });
-    }
-}
 
 unsafe fn create_render_context(hdc: HDC) -> HGLRC {
     OPENGL_LIB_INIT.call_once(|| {

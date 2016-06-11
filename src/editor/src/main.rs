@@ -1,10 +1,10 @@
 #![allow(unused_imports)]
 #![feature(const_fn)]
 
+extern crate hammer_core;
+
 #[macro_use]
 extern crate lazy_static;
-
-extern crate gl;
 
 #[macro_use]
 extern crate log;
@@ -12,12 +12,8 @@ extern crate env_logger;
 
 use std::thread;
 
-use window::*;
-
-#[macro_use]
-mod window;
-
-pub type Error = Box<std::error::Error + Send + Sync>;
+use hammer_core::window::*;
+use hammer_core::renderer::*;
 
 fn main() {
     env_logger::init().unwrap();

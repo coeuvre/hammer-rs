@@ -3,6 +3,9 @@ name = "editor"
 version = "0.1.0"
 authors = ["Coeuvre Wong <coeuvre@gmail.com>"]
 
+[dependencies.hammer_core]
+path = "../core"
+
 [dependencies]
 lazy_static = "*"
 
@@ -10,13 +13,3 @@ gl = "*"
 
 log = "*"
 env_logger = "*"
-
-[target.'cfg(windows)'.dependencies]
-winapi = "*"
-gdi32-sys = "*"
-kernel32-sys = "*"
-opengl32-sys = "*"
-user32-sys = "*"
-
-[profile.release]
-lto = true
