@@ -1,9 +1,11 @@
+extern crate gl;
+
 use std::str;
 use std::ptr;
 use std::ffi::CString;
+use std::sync::*;
 
-use gl;
-use gl::types::*;
+use self::gl::types::*;
 
 use Error;
 use window::{Window, GlContext};
@@ -12,10 +14,23 @@ pub struct Renderer {
     context: GlContext,
 }
 
+static OPENGL_FUNCTION_INIT: Once = ONCE_INIT;
+
 impl Renderer {
     pub fn new(window: &Window) -> Renderer {
+        let mut context = window.create_gl_context();
+
+        // TODO: Make sure that initialize OpenGL function once is enough.
+        OPENGL_FUNCTION_INIT.call_once(|| {
+            context.make_current();
+
+            gl::load_with(|symbol| {
+                context.load_function(symbol)
+            });
+        });
+
         Renderer {
-            context: window.create_gl_context(),
+            context: context,
         }
     }
 
@@ -41,6 +56,17 @@ impl Renderer {
         self.context.make_current();
         self.context.swap_buffers();
     }
+
+/*
+    fn prepare(&mut self) {
+        unsafe {
+            gl::Enable(gl::FRAMEBUFFER_SRGB);
+            gl::Enable(gl::BLEND);
+            gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
+            gl::BlendEquation(gl::FUNC_ADD);
+        }
+    }
+*/
 }
 
 pub struct Texture {

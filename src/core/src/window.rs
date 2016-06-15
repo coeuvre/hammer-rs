@@ -11,8 +11,6 @@ use std::sync::*;
 use std::sync::mpsc::*;
 use std::thread;
 
-use gl;
-
 use self::winapi::basetsd::*;
 use self::winapi::minwindef::*;
 use self::winapi::windef::*;
@@ -118,16 +116,6 @@ pub struct Window {
 }
 
 impl Window {
-    pub fn create_gl_context(&self) -> GlContext {
-        unsafe {
-            let hdc = self.hdc();
-            GlContext {
-                hglrc: create_gl_context(hdc),
-                hdc: hdc,
-            }
-        }
-    }
-
     pub fn show(&mut self) {
         unsafe {
             PostThreadMessageW(WINDOW_THREAD_ID, WM_SHOW_WINDOW, 0, self.hwnd() as LPARAM);
@@ -152,6 +140,16 @@ impl Window {
 
     pub fn size(&self) -> (i32, i32) {
         (self.w, self.h)
+    }
+
+    pub fn create_gl_context(&self) -> GlContext {
+        unsafe {
+            let hdc = self.hdc();
+            GlContext {
+                hglrc: create_gl_context(hdc),
+                hdc: hdc,
+            }
+        }
     }
 
     fn handle_event(&mut self, event: &Event) {
@@ -266,37 +264,31 @@ impl GlContext {
                     Some(old)
                 }
             }) {
-                Self::context_changed(old_hglrc, self.hglrc);
-
-                // TODO: Make sure that initialize OpenGL function once is enough.
-                OPENGL_FUNCTION_INIT.call_once(|| {
-                    gl::load_with(|symbol| {
-                        let cstr = CString::new(symbol).unwrap();
-                        let mut ptr = wglGetProcAddress(cstr.as_ptr());
-                        if ptr == 0 as PROC {
-                            ptr = GetProcAddress(OPENGL_LIB, cstr.as_ptr());
-                        }
-                        ptr
-                    });
-                });
-
-                gl::Enable(gl::FRAMEBUFFER_SRGB);
-                gl::Enable(gl::BLEND);
-                gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
-                gl::BlendEquation(gl::FUNC_ADD);
+                context_changed(old_hglrc, self.hglrc);
             }
+        }
+    }
+
+    pub fn load_function(&self, symbol: &str) -> *const winapi::c_void {
+        unsafe {
+            let cstr = CString::new(symbol).unwrap();
+            let mut ptr = wglGetProcAddress(cstr.as_ptr());
+            if ptr == 0 as PROC {
+                ptr = GetProcAddress(OPENGL_LIB, cstr.as_ptr());
+            }
+            ptr
         }
     }
 
     pub fn swap_buffers(&mut self) {
         unsafe { SwapBuffers(self.hdc); }
     }
+}
 
-    fn context_changed(old: HGLRC, new: HGLRC) {
-        info!("Thread {} has changed current context from {:?} to {:?}",
-              thread::current().name().unwrap_or(& unsafe { GetCurrentThreadId() }.to_string()),
-              old, new);
-    }
+fn context_changed(old: HGLRC, new: HGLRC) {
+    info!("Thread {} has changed current context from {:?} to {:?}",
+          thread::current().name().unwrap_or(& unsafe { GetCurrentThreadId() }.to_string()),
+          old, new);
 }
 
 impl Drop for GlContext {
@@ -310,7 +302,7 @@ impl Drop for GlContext {
 
                 *thread_current_context = 0 as HGLRC;
 
-                Self::context_changed(self.hglrc, 0 as HGLRC);
+                context_changed(self.hglrc, 0 as HGLRC);
             }
         });
     }
@@ -491,7 +483,6 @@ unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &W
 }
 
 static OPENGL_LIB_INIT: Once = ONCE_INIT;
-static OPENGL_FUNCTION_INIT: Once = ONCE_INIT;
 static mut OPENGL_LIB: HMODULE = 0 as HMODULE;
 
 unsafe fn create_gl_context(hdc: HDC) -> HGLRC {

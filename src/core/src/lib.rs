@@ -1,5 +1,3 @@
-extern crate gl;
-
 #[macro_use]
 extern crate log;
 
