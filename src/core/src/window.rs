@@ -118,11 +118,11 @@ pub struct Window {
 }
 
 impl Window {
-    pub fn create_render_context(&self) -> RenderContext {
+    pub fn create_gl_context(&self) -> GlContext {
         unsafe {
             let hdc = self.hdc();
-            RenderContext {
-                hglrc: create_render_context(hdc),
+            GlContext {
+                hglrc: create_gl_context(hdc),
                 hdc: hdc,
             }
         }
@@ -245,12 +245,12 @@ impl WindowState {
 
 thread_local!(static THREAD_CURRENT_CONTEXT: RefCell<HGLRC> = RefCell::new(0 as HGLRC));
 
-pub struct RenderContext {
+pub struct GlContext {
     hglrc: HGLRC,
     hdc: HDC,
 }
 
-impl RenderContext {
+impl GlContext {
     // One thread can only have one renderer be _current_.
     pub fn make_current(&mut self) {
         unsafe {
@@ -299,7 +299,7 @@ impl RenderContext {
     }
 }
 
-impl Drop for RenderContext {
+impl Drop for GlContext {
     fn drop(&mut self) {
         THREAD_CURRENT_CONTEXT.with(|thread_current_context| {
             let mut thread_current_context = thread_current_context.borrow_mut();
@@ -494,7 +494,7 @@ static OPENGL_LIB_INIT: Once = ONCE_INIT;
 static OPENGL_FUNCTION_INIT: Once = ONCE_INIT;
 static mut OPENGL_LIB: HMODULE = 0 as HMODULE;
 
-unsafe fn create_render_context(hdc: HDC) -> HGLRC {
+unsafe fn create_gl_context(hdc: HDC) -> HGLRC {
     OPENGL_LIB_INIT.call_once(|| {
         let name = wstr!("opengl32.dll");
         OPENGL_LIB = LoadLibraryW(name.as_ptr());
