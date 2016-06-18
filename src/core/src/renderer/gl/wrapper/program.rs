@@ -60,7 +60,7 @@ impl Program {
         self.context.use_program(self.id);
         let loc = self.get_uniform_location(uniform);
         if loc != -1 {
-            unsafe { gl::Uniform1i(loc, 0); }
+            unsafe { gl::Uniform1i(loc, value); }
         } else {
             error!("Failed to set value for uniform `{}`", uniform);
         }
