@@ -286,7 +286,7 @@ impl GlContext {
 }
 
 fn context_changed(old: HGLRC, new: HGLRC) {
-    info!("Thread {} has changed current context from {:?} to {:?}",
+    info!("Thread {} has changed current wgl context from {:?} to {:?}",
           thread::current().name().unwrap_or(& unsafe { GetCurrentThreadId() }.to_string()),
           old, new);
 }

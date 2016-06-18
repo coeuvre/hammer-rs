@@ -12,5 +12,5 @@ user32-sys = "*"
 
 [dependencies]
 gl = "*"
-
 log = "*"
+stb_image = { git = "https://github.com/servo/rust-stb-image" }

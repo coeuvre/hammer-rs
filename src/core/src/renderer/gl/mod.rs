@@ -1,57 +1,43 @@
-extern crate gl;
+extern crate stb_image;
 
-use std::sync::*;
+use std::path::Path;
 
 use Error;
-use window::{Window, GlContext};
 
-use self::gl::types::*;
+use window::Window;
 
-mod shader;
-mod texture;
+use self::wrapper::*;
+
+mod wrapper;
 
 pub struct Renderer {
-    context: GlContext,
+    context: Context,
+
+    quad: Quad,
 }
 
-static OPENGL_FUNCTION_INIT: Once = ONCE_INIT;
-
 impl Renderer {
-    pub fn new(window: &Window) -> Renderer {
-        let mut context = window.create_gl_context();
+    pub fn new(window: &Window) -> Result<Renderer, Error> {
+        let context = Context::new(window);
 
-        // TODO: Make sure that initialize OpenGL function once is enough.
-        OPENGL_FUNCTION_INIT.call_once(|| {
-            context.make_current();
+        let quad = try!(Quad::new(&context));
 
-            gl::load_with(|symbol| { context.load_function(symbol) });
-        });
-
-        Renderer {
+        Ok(Renderer {
             context: context,
-        }
-    }
-
-    pub fn resize(&mut self, w: i32, h: i32) {
-        self.context.make_current();
-
-        unsafe {
-            //self.buffer.resize(w, h);
-            gl::Viewport(0, 0, w, h);
-        }
+            quad: quad,
+        })
     }
 
     pub fn clear(&mut self, r: f32, g: f32, b: f32, a: f32) {
-        self.context.make_current();
+        self.context.clear_color(r, g, b, a);
+        self.context.clear();
+    }
 
-        unsafe {
-            gl::ClearColor(r, g, b, a);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
-        }
+    pub fn resize(&mut self, w: i32, h: i32) {
+        self.context.viewport(0, 0, w, h);
     }
 
     pub fn present(&mut self) {
-        self.context.make_current();
         self.context.swap_buffers();
     }
 
@@ -65,4 +51,113 @@ impl Renderer {
         }
     }
 */
+
+    pub fn load_texture<P: AsRef<Path>>(&mut self, path: P) -> Result<Texture, Error> {
+        use self::stb_image::image::*;
+
+        match load_with_depth(path, 4, true) {
+            LoadResult::Error(e) => {
+                Err(From::from(e))
+            }
+
+            LoadResult::ImageU8(image) => {
+                Texture::from_memory(&self.context, &image.data, image.width, image.height)
+            }
+
+            LoadResult::ImageF32(_) => unreachable!(),
+        }
+    }
+
+    pub fn draw(&mut self, drawable: &Drawable) {
+        drawable.draw(self);
+    }
+}
+
+pub trait Drawable {
+    fn draw(&self, renderer: &mut Renderer);
+}
+
+impl Drawable for Texture {
+    fn draw(&self, renderer: &mut Renderer) {
+        renderer.quad.fill_with_texture(self);
+    }
+}
+
+pub struct Quad {
+    context: Context,
+    program: Program,
+}
+
+impl Quad {
+    pub fn new(context: &Context) -> Result<Quad, Error> {
+        const VERTEX_SHADER: &'static str = r#"
+        #version 330 core
+
+        layout (location = 0)
+        in vec2 pos;
+
+        layout (location = 1)
+        in vec2 texcoord;
+
+        out vec2 v_texcoord;
+
+        void main() {
+            gl_Position = vec4(pos.xy, 0.0, 1.0);
+            v_texcoord = texcoord;
+        }
+        "#;
+
+        const FRAGMENT_SHADER: &'static str = r#"
+        #version 330 core
+
+        uniform sampler2D u_texture0;
+
+        in vec2 v_texcoord;
+
+        out vec4 color;
+
+        void main() {
+            color = texture2D(u_texture0, v_texcoord);
+        }
+        "#;
+
+        const VERTICES: [f32; 16] = [
+            // Positions // Texture Coords
+            0.0, 1.0,    0.0, 0.0,
+            1.0, 1.0,    1.0, 0.0,
+            0.0, 0.0,    0.0, 1.0,
+            1.0, 0.0,    1.0, 1.0,
+        ];
+
+        let mut program = try!(Program::compile_and_link(context, VERTEX_SHADER, FRAGMENT_SHADER));
+
+        program.set_uniform_1i("u_texture0", 0);
+
+    /*
+        glUniform1i(glGetUniformLocation(program.id, "u_texture0"), 0);
+
+        glGenVertexArrays(1, &program.vao);
+        glBindVertexArray(program.vao);
+
+        glGenBuffers(1, &program.vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, program.vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(QUAD_VERTICES), QUAD_VERTICES, GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0);
+        glEnableVertexAttribArray(0);
+
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat),
+                              (GLvoid *)(2 * sizeof(GLfloat)));
+        glEnableVertexAttribArray(1);
+
+        glBindVertexArray(0);
+    */
+        Ok(Quad {
+            context: context.clone(),
+            program: program,
+        })
+    }
+
+    pub fn fill_with_texture(&mut self, texture: &Texture) {
+    }
 }
