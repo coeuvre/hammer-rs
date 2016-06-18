@@ -3,13 +3,18 @@ name = "hammer_core"
 version = "0.1.0"
 authors = ["Coeuvre Wong <coeuvre@gmail.com>"]
 
+build = "build.rs"
+
+[build-dependencies]
+gcc = "*"
+
+[dependencies]
+gl = "*"
+log = "*"
+
 [target.'cfg(windows)'.dependencies]
 winapi = "*"
 gdi32-sys = "*"
 kernel32-sys = "*"
 opengl32-sys = "*"
 user32-sys = "*"
-
-[dependencies]
-gl = "*"
-log = "*"

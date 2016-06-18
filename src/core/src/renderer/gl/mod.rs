@@ -1,5 +1,3 @@
-extern crate stb_image;
-
 use std::path::Path;
 
 use Error;
@@ -53,19 +51,7 @@ impl Renderer {
 */
 
     pub fn load_texture<P: AsRef<Path>>(&mut self, path: P) -> Result<Texture, Error> {
-        use self::stb_image::image::*;
-
-        match load_with_depth(path, 4, true) {
-            LoadResult::Error(e) => {
-                Err(From::from(e))
-            }
-
-            LoadResult::ImageU8(image) => {
-                Texture::from_memory(&self.context, &image.data, image.width, image.height)
-            }
-
-            LoadResult::ImageF32(_) => unreachable!(),
-        }
+        Texture::load(&self.context, path)
     }
 
     pub fn draw(&mut self, drawable: &Drawable) {
