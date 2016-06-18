@@ -52,16 +52,21 @@ impl Texture {
 
                 stbi_image_free(data);
 
-                info!("Loaded texture {} ({}x{})", cstr_to_string(cstr), w, h);
+                info!("Loaded texture {} ({}x{})", path.as_ref().display(), w, h);
 
                 Ok(Texture {
                     context: context.clone(),
                     id: id,
                 })
             } else {
-                Err(From::from(format!("Failed to load texture {}: {}", cstr_to_string(cstr), cstr_to_string(stbi_failure_reason()))))
+                Err(From::from(format!("Failed to load texture {}: {}", path.as_ref().display(), cstr_to_string(stbi_failure_reason()))))
             }
         }
+    }
+
+    pub fn active(&self, unit: u32) {
+        self.context.active_texture(gl::TEXTURE0 + unit);
+        self.context.bind_texture_2d(self.id);
     }
 }
 

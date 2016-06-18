@@ -56,8 +56,13 @@ impl Program {
         Program::link(context, &vs, &fs)
     }
 
-    pub fn set_uniform_1i(&mut self, uniform: &str, value: i32) {
+    pub fn active(&self) {
         self.context.use_program(self.id);
+    }
+
+    pub fn set_uniform_1i(&mut self, uniform: &str, value: i32) {
+        self.active();
+
         let loc = self.get_uniform_location(uniform);
         if loc != -1 {
             unsafe { gl::Uniform1i(loc, value); }
