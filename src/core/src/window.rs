@@ -43,20 +43,20 @@ pub enum Event {
 
 pub struct WindowBuilder {
     title: String,
-    x: i32,
-    y: i32,
-    w: i32,
-    h: i32,
+    x: Option<i32>,
+    y: Option<i32>,
+    w: Option<i32>,
+    h: Option<i32>,
 }
 
 impl WindowBuilder {
     pub fn new() -> WindowBuilder {
         WindowBuilder {
-            title: "Hammer".to_string(),
-            x: 0,
-            y: 0,
-            w: 800,
-            h: 600,
+            title: "Untitled".to_string(),
+            x: None,
+            y: None,
+            w: None,
+            h: None,
         }
     }
 
@@ -66,14 +66,14 @@ impl WindowBuilder {
     }
 
     pub fn pos(&mut self, x: i32, y: i32) -> &mut Self {
-        self.x = x;
-        self.y = y;
+        self.x = Some(x);
+        self.y = Some(y);
         self
     }
 
     pub fn size(&mut self, w: i32, h: i32) -> &mut Self {
-        self.w = w;
-        self.h = h;
+        self.w = Some(w);
+        self.h = Some(h);
         self
     }
 
@@ -456,13 +456,16 @@ unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &W
     let state = Box::into_raw(Box::new(WindowState::new(event_tx)));
 
     let title = wstr!(&builder.title);
+    let x = builder.x.unwrap_or(CW_USEDEFAULT);
+    let y = builder.y.unwrap_or(CW_USEDEFAULT);
+    let w = builder.w.unwrap_or(CW_USEDEFAULT);
+    let h = builder.h.unwrap_or(CW_USEDEFAULT);
     CreateWindowExW(
         0,
         class_name.as_ptr(),
         title.as_ptr(),
-        WS_OVERLAPPEDWINDOW,
-        builder.x, builder.y,
-        builder.w, builder.h,
+        WS_OVERLAPPEDWINDOW ^ WS_THICKFRAME ^ WS_MAXIMIZEBOX,
+        x, y, w, h,
         0 as HWND,
         0 as HMENU,
         hinstance,
@@ -473,10 +476,10 @@ unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &W
         event_rx: event_rx,
         state: state,
 
-        x: builder.x,
-        y: builder.y,
-        w: builder.w,
-        h: builder.h,
+        x: x,
+        y: y,
+        w: w,
+        h: h,
     };
 
     Ok(window)
