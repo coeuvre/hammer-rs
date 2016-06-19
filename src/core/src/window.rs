@@ -45,8 +45,8 @@ pub struct WindowBuilder {
     title: String,
     x: Option<i32>,
     y: Option<i32>,
-    w: Option<i32>,
-    h: Option<i32>,
+    w: i32,
+    h: i32,
 }
 
 impl WindowBuilder {
@@ -55,8 +55,8 @@ impl WindowBuilder {
             title: "Untitled".to_string(),
             x: None,
             y: None,
-            w: None,
-            h: None,
+            w: 0,
+            h: 0,
         }
     }
 
@@ -72,8 +72,8 @@ impl WindowBuilder {
     }
 
     pub fn size(&mut self, w: i32, h: i32) -> &mut Self {
-        self.w = Some(w);
-        self.h = Some(h);
+        self.w = w;
+        self.h = h;
         self
     }
 
@@ -458,14 +458,23 @@ unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &W
     let title = wstr!(&builder.title);
     let x = builder.x.unwrap_or(CW_USEDEFAULT);
     let y = builder.y.unwrap_or(CW_USEDEFAULT);
-    let w = builder.w.unwrap_or(CW_USEDEFAULT);
-    let h = builder.h.unwrap_or(CW_USEDEFAULT);
+    let w = builder.w;
+    let h = builder.h;
+    let style = WS_OVERLAPPEDWINDOW ^ WS_THICKFRAME ^ WS_MAXIMIZEBOX;
+    let ex_style = 0;
+    let mut rect = RECT {
+        left: 0,
+        right: w,
+        top: 0,
+        bottom: h,
+    };
+    AdjustWindowRectEx(&mut rect, style, 0, ex_style);
     CreateWindowExW(
-        0,
+        ex_style,
         class_name.as_ptr(),
         title.as_ptr(),
-        WS_OVERLAPPEDWINDOW ^ WS_THICKFRAME ^ WS_MAXIMIZEBOX,
-        x, y, w, h,
+        style,
+        x, y, rect.right - rect.left, rect.bottom - rect.top,
         0 as HWND,
         0 as HMENU,
         hinstance,

@@ -35,7 +35,7 @@ impl Texture {
 
                 context.bind_texture_2d(id);
 
-                gl::TexImage2D(gl::TEXTURE_2D, 0, gl::SRGB_ALPHA as i32, w as i32, h as i32, 0,
+                gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA as i32, w as i32, h as i32, 0,
                                gl::RGBA, gl::UNSIGNED_BYTE, data as *const c_void);
 
                 gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
