@@ -45,8 +45,8 @@ pub struct WindowBuilder {
     title: String,
     x: Option<i32>,
     y: Option<i32>,
-    w: i32,
-    h: i32,
+    w: Option<i32>,
+    h: Option<i32>,
 }
 
 impl WindowBuilder {
@@ -55,8 +55,8 @@ impl WindowBuilder {
             title: "Untitled".to_string(),
             x: None,
             y: None,
-            w: 0,
-            h: 0,
+            w: None,
+            h: None,
         }
     }
 
@@ -72,8 +72,8 @@ impl WindowBuilder {
     }
 
     pub fn size(&mut self, w: i32, h: i32) -> &mut Self {
-        self.w = w;
-        self.h = h;
+        self.w = Some(w);
+        self.h = Some(h);
         self
     }
 
@@ -455,26 +455,35 @@ unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &W
 
     let state = Box::into_raw(Box::new(WindowState::new(event_tx)));
 
+    let style = WS_OVERLAPPEDWINDOW ^ WS_THICKFRAME ^ WS_MAXIMIZEBOX;
+    let ex_style = 0;
+
     let title = wstr!(&builder.title);
     let x = builder.x.unwrap_or(CW_USEDEFAULT);
     let y = builder.y.unwrap_or(CW_USEDEFAULT);
-    let w = builder.w;
-    let h = builder.h;
-    let style = WS_OVERLAPPEDWINDOW ^ WS_THICKFRAME ^ WS_MAXIMIZEBOX;
-    let ex_style = 0;
-    let mut rect = RECT {
-        left: 0,
-        right: w,
-        top: 0,
-        bottom: h,
+    
+    // Calcuate window size base on client area size
+    let (w, h) = if builder.w.is_some() && builder.h.is_some() {
+        let w = builder.w.unwrap();
+        let h = builder.h.unwrap();
+        let mut rect = RECT {
+            left: 0,
+            right: w,
+            top: 0,
+            bottom: h,
+        };
+        AdjustWindowRectEx(&mut rect, style, 0, ex_style);
+        (rect.right - rect.left, rect.bottom - rect.top)
+    } else {
+        (CW_USEDEFAULT, CW_USEDEFAULT)
     };
-    AdjustWindowRectEx(&mut rect, style, 0, ex_style);
+
     CreateWindowExW(
         ex_style,
         class_name.as_ptr(),
         title.as_ptr(),
         style,
-        x, y, rect.right - rect.left, rect.bottom - rect.top,
+        x, y, w, h,
         0 as HWND,
         0 as HMENU,
         hinstance,

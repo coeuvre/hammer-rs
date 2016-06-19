@@ -247,6 +247,8 @@ impl Quad {
     }
 
     pub fn fill_with_texture(&mut self, window_to_clip_trans: Trans, x: f32, y: f32, w: f32, h: f32, texture: &Texture) {
+        unsafe { gl::Enable(gl::FRAMEBUFFER_SRGB); }
+
         self.program.active();
 
         let trans = window_to_clip_trans * Trans::offset(x, y) * Trans::scale(w, h);
