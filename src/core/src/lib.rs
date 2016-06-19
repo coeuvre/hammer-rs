@@ -3,6 +3,7 @@ extern crate log;
 
 pub mod window;
 pub mod renderer;
+pub mod math;
 
 mod util;
 

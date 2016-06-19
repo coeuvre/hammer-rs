@@ -71,6 +71,17 @@ impl Program {
         }
     }
 
+    pub fn set_uniform_matrix3_fv(&mut self, uniform: &str, value: &[GLfloat]) {
+        self.active();
+
+        let loc = self.get_uniform_location(uniform);
+        if loc != -1 {
+            unsafe { gl::UniformMatrix3fv(loc, 1, gl::FALSE, value.as_ptr()); }
+        } else {
+            error!("Failed to set value for uniform `{}`", uniform);
+        }
+    }
+
     fn get_uniform_location(&self, uniform: &str) -> i32 {
         let cstr = CString::new(uniform).unwrap();
         unsafe { gl::GetUniformLocation(self.id, cstr.as_ptr()) }

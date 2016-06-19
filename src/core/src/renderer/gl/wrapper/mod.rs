@@ -3,8 +3,11 @@ extern crate gl;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::sync::*;
+use std::collections::HashMap;
 
 use self::gl::types::*;
+
+use math::Trans;
 
 // pub use self::array_buffer::ArrayBuffer;
 pub use self::program::Program;
@@ -72,9 +75,11 @@ impl Context {
     pub fn bind_texture_2d(&self, id: GLuint) {
         self.make_current();
         let mut state = self.state.borrow_mut();
-        if state.texture_2d != id {
+        let active_texture = state.active_texture;
+        let texture_2d = state.texture_2d.entry(active_texture).or_insert(0);
+        if *texture_2d != id {
             unsafe { gl::BindTexture(gl::TEXTURE_2D, id); }
-            state.texture_2d = id;
+            *texture_2d = id;
         }
     }
 
@@ -118,7 +123,7 @@ impl Context {
 struct State {
     program: GLuint,
     active_texture: GLenum,
-    texture_2d: GLuint,
+    texture_2d: HashMap<GLenum, GLuint>,
     array_buffer: GLuint,
     vertex_array: GLuint,
 }
@@ -128,7 +133,7 @@ impl State {
         State {
             program: 0,
             active_texture: gl::TEXTURE0,
-            texture_2d: 0,
+            texture_2d: HashMap::new(),
             array_buffer: 0,
             vertex_array: 0,
         }
@@ -161,6 +166,8 @@ impl Quad {
         const VERTEX_SHADER: &'static str = r#"
         #version 330 core
 
+        uniform mat3 u_trans;
+
         layout (location = 0)
         in vec2 pos;
 
@@ -170,7 +177,7 @@ impl Quad {
         out vec2 v_texcoord;
 
         void main() {
-            gl_Position = vec4(pos.xy, 0.0, 1.0);
+            gl_Position = vec4((u_trans * vec3(pos.xy, 1.0)).xy, 0.0, 1.0);
             v_texcoord = texcoord;
         }
         "#;
@@ -239,8 +246,13 @@ impl Quad {
         }
     }
 
-    pub fn fill_with_texture(&mut self, texture: &Texture) {
+    pub fn fill_with_texture(&mut self, window_to_clip_trans: Trans, x: f32, y: f32, w: f32, h: f32, texture: &Texture) {
         self.program.active();
+
+        let trans = window_to_clip_trans * Trans::offset(x, y) * Trans::scale(w, h);
+        let mat = trans.to_gl_mat3();
+        self.program.set_uniform_matrix3_fv("u_trans", &mat);
+
         texture.active(0);
         self.context.bind_vertex_array(self.vao);
         unsafe { gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4); }

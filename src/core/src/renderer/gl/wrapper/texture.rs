@@ -16,22 +16,18 @@ use Error;
 pub struct Texture {
     context: Context,
     id: GLuint,
+    w: i32,
+    h: i32,
 }
 
 impl Texture {
     pub fn load<P: AsRef<Path>>(context: &Context, path: P) -> Result<Texture, Error> {
-        let cstr = match path.as_ref().as_os_str().to_str() {
-            Some(s) => match CString::new(s.as_bytes()) {
-                Ok(s) => s.as_ptr(),
-                Err(_) => return Err(From::from("path contains null character".to_string()))
-            },
-            None => return Err(From::from("path is not valid utf8".to_string())),
-        };
+        let cstr = try!(CString::new(&*path.as_ref().as_os_str().to_string_lossy()));
 
         unsafe {
             let mut w = 0;
             let mut h = 0;
-            let data = stbi_load(cstr, &mut w, &mut h, ptr::null_mut(), 4);
+            let data = stbi_load(cstr.as_ptr(), &mut w, &mut h, ptr::null_mut(), 4);
             if data != ptr::null_mut() {
                 let mut id = 0;
 
@@ -57,6 +53,8 @@ impl Texture {
                 Ok(Texture {
                     context: context.clone(),
                     id: id,
+                    w: w,
+                    h: h,
                 })
             } else {
                 Err(From::from(format!("Failed to load texture {}: {}", path.as_ref().display(), cstr_to_string(stbi_failure_reason()))))
@@ -67,6 +65,10 @@ impl Texture {
     pub fn active(&self, unit: u32) {
         self.context.active_texture(gl::TEXTURE0 + unit);
         self.context.bind_texture_2d(self.id);
+    }
+
+    pub fn size(&self) -> (i32, i32) {
+        (self.w, self.h)
     }
 }
 
