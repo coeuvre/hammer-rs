@@ -31,7 +31,7 @@ impl ArrayBuffer {
 
     pub fn buffer_data<T: Sized>(&mut self, data: Option<&[T]>, usage: BufferUsage) {
         self.bind();
-        
+
         if let Some(data) = data {
             unsafe { gl::BufferData(gl::ARRAY_BUFFER, (mem::size_of::<T>() * data.len()) as GLsizeiptr, data.as_ptr() as *const c_void, usage.to_gl()); }
         } else {

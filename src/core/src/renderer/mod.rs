@@ -1,4 +1,5 @@
 pub type Renderer = gl::Renderer;
+pub type Texture = gl::wrapper::Texture;
 
 mod gl;
 

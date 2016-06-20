@@ -9,7 +9,7 @@ use super::Drawable;
 
 use math::Trans;
 
-mod wrapper;
+pub mod wrapper;
 
 pub struct Renderer {
     context: Context,
