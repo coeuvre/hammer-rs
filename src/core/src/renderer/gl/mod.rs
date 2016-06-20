@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::collections::HashMap;
 
 use Error;
 
@@ -7,6 +8,7 @@ use window::Window;
 use self::wrapper::*;
 use super::Drawable;
 
+use asset;
 use math::Trans;
 
 pub mod wrapper;
@@ -16,6 +18,8 @@ pub struct Renderer {
     quad: Quad,
 
     window_to_clip_trans: Trans,
+
+    textures: HashMap<asset::Texture, Texture>,
 }
 
 impl Renderer {
@@ -29,6 +33,8 @@ impl Renderer {
             quad: quad,
 
             window_to_clip_trans: Trans::identity(),
+
+            textures: HashMap::new(),
         })
     }
 
@@ -70,10 +76,6 @@ impl Renderer {
         self.window_to_clip_trans = Trans::offset(-1.0, -1.0) * trans;
     }
 
-    pub fn load_texture<P: AsRef<Path>>(&mut self, path: P) -> Result<Texture, Error> {
-        Texture::load(&self.context, path)
-    }
-
     pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32) -> Rect {
         Rect {
             renderer: self,
@@ -94,7 +96,7 @@ pub struct Rect<'a> {
 }
 
 impl<'a> Rect<'a> {
-    pub fn texture<'b>(self, texture: &'b Texture) -> TexturedRect<'a, 'b> {
+    pub fn texture<'b>(self, texture: &'b asset::Texture) -> TexturedRect<'a, 'b> {
         TexturedRect {
             renderer: self.renderer,
             texture: texture,
@@ -108,7 +110,7 @@ impl<'a> Rect<'a> {
 
 pub struct TexturedRect<'a, 'b> {
     renderer: &'a mut Renderer,
-    texture: &'b Texture,
+    texture: &'b asset::Texture,
     x: f32,
     y: f32,
     w: f32,
@@ -117,6 +119,10 @@ pub struct TexturedRect<'a, 'b> {
 
 impl<'a, 'b> Drawable for TexturedRect<'a, 'b> {
     fn draw(&mut self) {
-        self.renderer.quad.fill_with_texture(self.renderer.window_to_clip_trans, self.x, self.y, self.w, self.h, self.texture);
+        if !self.renderer.textures.contains_key(self.texture) {
+            self.renderer.textures.insert(self.texture.clone(), Texture::new(&self.renderer.context, self.texture).unwrap());
+        }
+        let texture = self.renderer.textures.get(self.texture).unwrap();
+        self.renderer.quad.fill_with_texture(self.renderer.window_to_clip_trans, self.x, self.y, self.w, self.h, texture);
     }
 }

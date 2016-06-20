@@ -27,52 +27,54 @@ pub fn texture<ID: AsAssetID>(id: ID) -> Texture {
     }
 }
 
+#[derive(Hash, Eq, PartialEq, Clone)]
 pub struct Texture {
     id: AssetID,
 }
 
 impl Texture {
     pub fn load<P: AsRef<Path>>(self, path: P) -> Texture {
-        ASSETS.with_slot(&self.id, |slot| {
-            slot.load_with(|| {
-                unsafe {
-                    let cstr = CString::new(&*path.as_ref().as_os_str().to_string_lossy()).unwrap();
-                    let mut w = 0;
-                    let mut h = 0;
-                    let data = stbi_load(cstr.as_ptr(), &mut w, &mut h, ptr::null_mut(), 4);
-                    if data != ptr::null_mut() {
-                        info!("Loaded texture {} ({}x{})", path.as_ref().display(), w, h);
+        ASSETS.load_with(&self.id, || {
+            unsafe {
+                let cstr = CString::new(&*path.as_ref().as_os_str().to_string_lossy()).unwrap();
+                let mut w = 0;
+                let mut h = 0;
+                let data = stbi_load(cstr.as_ptr(), &mut w, &mut h, ptr::null_mut(), 4);
+                if data != ptr::null_mut() {
+                    info!("Loaded texture {} ({}x{})", path.as_ref().display(), w, h);
 
-                        SlotState::Loaded(Box::new(Asset::Texture {
-                            w: w,
-                            h: h,
-                            data: data,
-                        }))
-                    } else {
-                        SlotState::LoadError(From::from(format!("Failed to load texture {}: {}", path.as_ref().display(), cstr_to_string(stbi_failure_reason()))))
-                    }
+                    SlotState::Loaded(Box::new(Asset::Texture {
+                        w: w,
+                        h: h,
+                        data: data,
+                    }))
+                } else {
+                    SlotState::LoadError(From::from(format!("Failed to load texture {}: {}", path.as_ref().display(), cstr_to_string(stbi_failure_reason()))))
                 }
-            })
+            }
         });
 
         self
     }
 
-    pub fn size(&self) -> (i32, i32) {
-        let mut size = (0, 0);
-        ASSETS.with_slot(&self.id, |slot| {
-            slot.with_asset(|asset| {
-                match *asset {
-                    Asset::Texture { w, h, .. } => {
-                        size = (w, h);
-                    }
-
-                    _ => unreachable!(),
+    pub fn access<F, T>(&self, f: F) -> Option<T> where F: FnOnce(i32, i32, *mut u8) -> T {
+        let mut result = None;
+        ASSETS.with_asset(&self.id, |asset| {
+            match *asset {
+                Asset::Texture { w, h, data } => {
+                    result = Some(f(w, h, data));
                 }
-            })
-        });
 
-        size
+                _ => unreachable!(),
+            }
+        });
+        result
+    }
+
+    pub fn size(&self) -> (i32, i32) {
+        self.access(|w, h, _| {
+            (w, h)
+        }).unwrap_or((0, 0))
     }
 }
 
@@ -91,12 +93,46 @@ impl Assets {
         }
     }
 
-    pub fn with_slot<F>(&self, id: &AssetID, f: F) where F: FnOnce(&Slot) {
+    pub fn with_asset<F>(&self, id: &AssetID, f: F) where F: FnOnce(&Asset) {
         let mut slots = self.slots.lock().unwrap();
-        let slot = slots.entry(id.to_string()).or_insert(Slot {
+        let slot = slots.entry(id.clone()).or_insert(Slot {
             state: Mutex::new(SlotState::Unloaded),
         });
-        f(slot);
+        let state = slot.state.lock().unwrap();
+        match *state {
+            SlotState::Loaded(ref asset) => {
+                f(&*asset);
+            }
+
+            _ => {}
+        }
+    }
+
+    pub fn load_with<F>(&self, id: &AssetID, f: F) where F: FnOnce() -> SlotState {
+        let load = {
+            let mut slots = self.slots.lock().unwrap();
+            let slot = slots.entry(id.clone()).or_insert(Slot {
+                state: Mutex::new(SlotState::Unloaded),
+            });
+            let mut state = slot.state.lock().unwrap();
+            match *state {
+                SlotState::Unloaded => {
+                    *state = SlotState::Loading;
+                    true
+                }
+
+                _ => false,
+            }
+        };
+
+        if load {
+            let new_state = f();
+
+            let slots = self.slots.lock().unwrap();
+            let slot = slots.get(id).unwrap();
+            let mut state = slot.state.lock().unwrap();
+            *state = new_state
+        }
     }
 }
 
@@ -133,37 +169,4 @@ enum SlotState {
 
 struct Slot {
     state: Mutex<SlotState>,
-}
-
-impl Slot {
-    pub fn load_with<F>(&self, f: F) where F: FnOnce() -> SlotState {
-        let load = {
-            let mut state = self.state.lock().unwrap();
-            match *state {
-                SlotState::Unloaded => {
-                    *state = SlotState::Loading;
-                    true
-                }
-
-                _ => false,
-            }
-        };
-
-        if load {
-            let new_state = f();
-            let mut state = self.state.lock().unwrap();
-            *state = new_state;
-        }
-    }
-
-    pub fn with_asset<F>(&self, f: F) where F: FnOnce(&Asset) {
-        let state = self.state.lock().unwrap();
-        match *state {
-            SlotState::Loaded(ref asset) => {
-                f(&*asset);
-            }
-
-            _ => {}
-        }
-    }
 }
