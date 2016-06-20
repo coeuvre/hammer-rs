@@ -11,6 +11,7 @@ gcc = "*"
 [dependencies]
 gl = "*"
 log = "*"
+lazy_static = "*"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "*"
