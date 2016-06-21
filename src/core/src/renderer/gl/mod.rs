@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::collections::HashMap;
 
 use Error;
@@ -19,7 +18,7 @@ pub struct Renderer {
 
     window_to_clip_trans: Trans,
 
-    textures: HashMap<asset::Texture, Texture>,
+    textures: HashMap<asset::AssetID, Texture>,
 }
 
 impl Renderer {
@@ -119,10 +118,13 @@ pub struct TexturedRect<'a, 'b> {
 
 impl<'a, 'b> Drawable for TexturedRect<'a, 'b> {
     fn draw(&mut self) {
-        if !self.renderer.textures.contains_key(self.texture) {
-            self.renderer.textures.insert(self.texture.clone(), Texture::new(&self.renderer.context, self.texture).unwrap());
+        if !self.renderer.textures.contains_key(self.texture.id()) {
+            if let Ok(texture) = Texture::new(&self.renderer.context, self.texture) {
+                self.renderer.textures.insert(self.texture.id().clone(), texture);
+            }
         }
-        let texture = self.renderer.textures.get(self.texture).unwrap();
-        self.renderer.quad.fill_with_texture(self.renderer.window_to_clip_trans, self.x, self.y, self.w, self.h, texture);
+        if let Some(texture) = self.renderer.textures.get(self.texture.id()) {
+            self.renderer.quad.fill_with_texture(self.renderer.window_to_clip_trans, self.x, self.y, self.w, self.h, texture);
+        }
     }
 }

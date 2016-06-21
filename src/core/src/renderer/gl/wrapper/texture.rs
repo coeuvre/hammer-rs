@@ -1,15 +1,9 @@
-use std::ptr;
-use std::path::Path;
 use std::os::raw::c_void;
-use std::ffi::CString;
 
 use super::gl;
 use super::gl::types::*;
 
 use super::Context;
-
-use util::stb_image::*;
-use util::cstr_to_string;
 
 use Error;
 use asset;
@@ -17,7 +11,7 @@ use asset;
 pub struct Texture {
     context: Context,
     id: GLuint,
-    raw: asset::Texture
+    _raw: asset::Texture
 }
 
 impl Texture {
@@ -39,13 +33,16 @@ impl Texture {
                 gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
 
                 context.bind_texture_2d(0);
+
+                info!("Uploaded texture `{}` into GPU.", raw);
+                
                 Ok(Texture {
                     context: context.clone(),
                     id: id,
-                    raw: raw.clone(),
+                    _raw: raw.clone(),
                 })
             }
-        }).unwrap_or(Err(From::from("Failed to access texture")))
+        }).unwrap_or(Err(From::from(format!("Failed to access texture `{}`", raw))))
     }
 
     pub fn active(&self, unit: u32) {

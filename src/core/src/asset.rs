@@ -1,8 +1,10 @@
 use std::path::Path;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::ffi::CString;
 use std::ptr;
+use std::fmt;
+use std::sync::Arc;
 
 use Error;
 
@@ -22,26 +24,29 @@ impl<'a> AsAssetID for &'a str {
 }
 
 pub fn texture<ID: AsAssetID>(id: ID) -> Texture {
+    let id = id.as_asset_id();
     Texture {
-        id: id.as_asset_id(),
+        slot: ASSETS.acquire_slot(&id),
+        id: id,
     }
 }
 
-#[derive(Hash, Eq, PartialEq, Clone)]
+#[derive(Clone)]
 pub struct Texture {
     id: AssetID,
+    slot: SlotHandle,
 }
 
 impl Texture {
     pub fn load<P: AsRef<Path>>(self, path: P) -> Texture {
-        ASSETS.load_with(&self.id, || {
+        if !ASSETS.load_with(&self.id, || {
             unsafe {
                 let cstr = CString::new(&*path.as_ref().as_os_str().to_string_lossy()).unwrap();
                 let mut w = 0;
                 let mut h = 0;
                 let data = stbi_load(cstr.as_ptr(), &mut w, &mut h, ptr::null_mut(), 4);
                 if data != ptr::null_mut() {
-                    info!("Loaded texture {} ({}x{})", path.as_ref().display(), w, h);
+                    info!("Loaded texture `{}` into `{}`.", path.as_ref().display(), self.id);
 
                     SlotState::Loaded(Box::new(Asset::Texture {
                         w: w,
@@ -52,9 +57,15 @@ impl Texture {
                     SlotState::LoadError(From::from(format!("Failed to load texture {}: {}", path.as_ref().display(), cstr_to_string(stbi_failure_reason()))))
                 }
             }
-        });
+        }) {
+            warn!("Tried to load texture `{}` into `{}` which is already occupied.", path.as_ref().display(), self.id);
+        }
 
         self
+    }
+
+    pub fn id(&self) -> &AssetID {
+        &self.id
     }
 
     pub fn access<F, T>(&self, f: F) -> Option<T> where F: FnOnce(i32, i32, *mut u8) -> T {
@@ -78,28 +89,50 @@ impl Texture {
     }
 }
 
+impl fmt::Display for Texture {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.id)
+    }
+}
+
 lazy_static! {
     static ref ASSETS: Assets = Assets::new();
 }
 
 struct Assets {
-    slots: Mutex<HashMap<AssetID, Slot>>,
+    slots: RwLock<HashMap<AssetID, SlotHandle>>,
 }
 
 impl Assets {
-    pub fn new() -> Assets {
+    fn new() -> Assets {
         Assets {
-            slots: Mutex::new(HashMap::new()),
+            slots: RwLock::new(HashMap::new()),
         }
     }
 
-    pub fn with_asset<F>(&self, id: &AssetID, f: F) where F: FnOnce(&Asset) {
-        let mut slots = self.slots.lock().unwrap();
-        let slot = slots.entry(id.clone()).or_insert(Slot {
-            state: Mutex::new(SlotState::Unloaded),
-        });
-        let state = slot.state.lock().unwrap();
-        match *state {
+    fn acquire_slot(&self, id: &AssetID) -> SlotHandle {
+        {
+            let slots = self.slots.read().unwrap();
+
+            if let Some(slot) = slots.get(id) {
+                return slot.clone();
+            }
+        }
+
+        let mut slots = self.slots.write().unwrap();
+        let slot = Arc::new(RwLock::new(Slot {
+            state: SlotState::Unloaded,
+        }));
+
+        slots.insert(id.clone(), slot.clone());
+
+        slot
+    }
+
+    fn with_asset<F>(&self, id: &AssetID, f: F) where F: FnOnce(&Asset) {
+        let handle = self.acquire_slot(id);
+        let slot = handle.read().unwrap();
+        match slot.state {
             SlotState::Loaded(ref asset) => {
                 f(&*asset);
             }
@@ -108,16 +141,14 @@ impl Assets {
         }
     }
 
-    pub fn load_with<F>(&self, id: &AssetID, f: F) where F: FnOnce() -> SlotState {
+    fn load_with<F>(&self, id: &AssetID, f: F) -> bool where F: FnOnce() -> SlotState {
+        let handle = self.acquire_slot(id);
+
         let load = {
-            let mut slots = self.slots.lock().unwrap();
-            let slot = slots.entry(id.clone()).or_insert(Slot {
-                state: Mutex::new(SlotState::Unloaded),
-            });
-            let mut state = slot.state.lock().unwrap();
-            match *state {
+            let mut slot = handle.write().unwrap();
+            match slot.state {
                 SlotState::Unloaded => {
-                    *state = SlotState::Loading;
+                    slot.state = SlotState::Loading;
                     true
                 }
 
@@ -128,11 +159,11 @@ impl Assets {
         if load {
             let new_state = f();
 
-            let slots = self.slots.lock().unwrap();
-            let slot = slots.get(id).unwrap();
-            let mut state = slot.state.lock().unwrap();
-            *state = new_state
+            let mut slot = handle.write().unwrap();
+            slot.state = new_state;
         }
+
+        load
     }
 }
 
@@ -147,6 +178,7 @@ enum Asset {
 }
 
 unsafe impl Send for Asset {}
+unsafe impl Sync for Asset {}
 
 impl Drop for Asset {
     fn drop(&mut self) {
@@ -167,6 +199,8 @@ enum SlotState {
     LoadError(Error),
 }
 
+type SlotHandle = Arc<RwLock<Slot>>;
+
 struct Slot {
-    state: Mutex<SlotState>,
+    state: SlotState,
 }
