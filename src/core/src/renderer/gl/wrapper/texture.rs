@@ -11,12 +11,12 @@ use asset;
 pub struct Texture {
     context: Context,
     id: GLuint,
-    _raw: asset::Texture
+    _raw: asset::Asset<asset::image::Image>,
 }
 
 impl Texture {
-    pub fn new(context: &Context, texture: &asset::Asset<asset::Texture>) -> Result<Texture, Error> {
-        if let Some(raw) = texture.borrow() {
+    pub fn new(context: &Context, image: &asset::Asset<asset::image::Image>) -> Result<Texture, Error> {
+        if let Some(raw) = image.borrow() {
             unsafe {
                 let (w, h) = raw.size();
                 let data = raw.data();
@@ -37,16 +37,16 @@ impl Texture {
 
                 context.bind_texture_2d(0);
 
-                info!("Uploaded texture `{}` into GPU.", texture.id());
+                info!("Uploaded texture `{}` into GPU.", image.id());
 
                 Ok(Texture {
                     context: context.clone(),
                     id: id,
-                    _raw: raw.clone(),
+                    _raw: image.clone(),
                 })
             }
         } else {
-            Err(From::from(format!("Failed to access texture `{}`", texture.id())))
+            Err(From::from(format!("Failed to access texture `{}`", image.id())))
         }
     }
 

@@ -94,10 +94,10 @@ pub struct Rect<'a> {
 }
 
 impl<'a> Rect<'a> {
-    pub fn texture<'b>(self, texture: &'b asset::Asset<asset::Texture>) -> TexturedRect<'a, 'b> {
+    pub fn texture<'b>(self, image: &'b asset::Asset<asset::image::Image>) -> TexturedRect<'a, 'b> {
         TexturedRect {
             renderer: self.renderer,
-            texture: texture,
+            texture: image,
             x: self.x,
             y: self.y,
             w: self.w,
@@ -108,7 +108,7 @@ impl<'a> Rect<'a> {
 
 pub struct TexturedRect<'a, 'b> {
     renderer: &'a mut Renderer,
-    texture: &'b asset::Asset<asset::Texture>,
+    texture: &'b asset::Asset<asset::image::Image>,
     x: f32,
     y: f32,
     w: f32,

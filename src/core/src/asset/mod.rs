@@ -1,10 +1,9 @@
 use std::any::Any;
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::fmt;
 use std::path::Path;
 use std::ops::Deref;
-use std::ffi::CString;
-use std::ptr;
 use std::sync::Arc;
 use std::sync::{Mutex, RwLock, RwLockReadGuard};
 
@@ -12,8 +11,7 @@ use Error;
 
 use typemap::{TypeMap, Key};
 
-use util::stb_image::*;
-use util::cstr_to_string;
+pub mod image;
 
 pub type AssetId = String;
 
@@ -27,7 +25,9 @@ impl<'a> AsAssetId for &'a str {
     }
 }
 
-pub trait Resource: Any + Send {}
+pub trait Resource: Any + Send {
+    fn type_name() -> &'static str;
+}
 
 pub trait Loadable: Sized {
     fn load<P: AsRef<Path>>(path: P) -> Result<Self, Error>;
@@ -45,14 +45,7 @@ pub struct Asset<A> {
     state: Arc<RwLock<AssetState<A>>>,
 }
 
-impl<A> Asset<A> {
-    fn new(id: AssetId) -> Asset<A> {
-        Asset {
-            id: id,
-            state: Arc::new(RwLock::new(AssetState::Unloaded)),
-        }
-    }
-
+impl<A: Resource> Asset<A> {
     pub fn id(&self) -> &AssetId {
         &self.id
     }
@@ -71,7 +64,7 @@ impl<A> Asset<A> {
         }
     }
 
-    pub fn load_with<F: FnOnce() -> Result<A, Error>>(&self, f: F) -> Result<(), Error>{
+    pub fn load_with<F: FnOnce() -> Result<A, Error>>(&self, f: F) -> Result<(), Error> {
         let load = {
             let mut state = self.state.write().unwrap();
             match *state {
@@ -92,7 +85,7 @@ impl<A> Asset<A> {
             let new_state = match f() {
                 Ok(asset) => AssetState::Loaded(Box::new(asset)),
                 Err(e) => {
-                    err = Some(format!("Failed to load asset: {}", e));
+                    err = Some(format!("{}", e));
                     AssetState::LoadError(e)
                 }
             };
@@ -109,15 +102,17 @@ impl<A> Asset<A> {
             Err("Asset is loading".into())
         }
     }
-
-    pub fn insert(&self, asset: A) -> Result<(), Error> {
-        self.load_with(|| Ok(asset))
-    }
 }
 
-impl<A: Loadable> Asset<A> {
+impl<A: Resource + Loadable> Asset<A> {
     pub fn load<P: AsRef<Path>>(&self, path: P) -> Result<(), Error> {
-        self.load_with(|| A::load(path))
+        self.load_with(|| {
+            let result = A::load(path.as_ref());
+            if result.is_ok() {
+                info!("Loaded {} from {}.", self, path.as_ref().display());
+            }
+            result
+        })
     }
 }
 
@@ -127,6 +122,12 @@ impl<A> Clone for Asset<A> {
             id: self.id.clone(),
             state: self.state.clone(),
         }
+    }
+}
+
+impl<A: Resource> fmt::Display for Asset<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}({})", A::type_name(), self.id())
     }
 }
 
@@ -164,56 +165,6 @@ impl<A: Resource> AssetWrapper<A> {
     }
 }
 
-#[derive(Clone)]
-pub struct Texture {
-    w: i32,
-    h: i32,
-    data: *mut u8,
-}
-
-impl Resource for Texture {}
-unsafe impl Send for Texture {}
-
-impl Loadable for Texture {
-    fn load<P: AsRef<Path>>(path: P) -> Result<Texture, Error> {
-        unsafe {
-            let cstr = CString::new(&*path.as_ref().as_os_str().to_string_lossy()).unwrap();
-            let mut w = 0;
-            let mut h = 0;
-            let data = stbi_load(cstr.as_ptr(), &mut w, &mut h, ptr::null_mut(), 4);
-            if data != ptr::null_mut() {
-                info!("Loaded texture `{}`.", path.as_ref().display());
-
-                Ok(Texture {
-                    w: w,
-                    h: h,
-                    data: data,
-                })
-            } else {
-                Err(format!("Failed to load texture {}: {}", path.as_ref().display(), cstr_to_string(stbi_failure_reason())).into())
-            }
-        }
-    }
-}
-
-impl Texture {
-    pub fn size(&self) -> (i32, i32) {
-        (self.w, self.h)
-    }
-
-    pub unsafe fn data(&self) -> *mut u8 {
-        self.data
-    }
-}
-
-impl Drop for Texture {
-    fn drop(&mut self) {
-        unsafe {
-            stbi_image_free(self.data);
-        }
-    }
-}
-
 lazy_static! {
     static ref ASSETS: Assets = Assets::new();
 }
@@ -245,15 +196,18 @@ impl Slots {
         let mut type_slots = self.slots.lock().unwrap();
         let slots = type_slots.entry::<AssetTypeMapKey<A>>().or_insert_with(|| HashMap::new());
 
-        if let Some(slot) = slots.get(id) {
-            return slot.clone();
+        if let Some(asset) = slots.get(id) {
+            return asset.clone();
         }
 
-        let slot = Asset::new(id.clone());
+        let asset = Asset {
+            id: id.clone(),
+            state: Arc::new(RwLock::new(AssetState::Unloaded)),
+        };
 
-        slots.insert(id.clone(), slot.clone());
+        slots.insert(id.clone(), asset.clone());
 
-        slot
+        asset
     }
 }
 
