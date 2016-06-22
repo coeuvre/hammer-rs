@@ -1,3 +1,4 @@
+extern crate typemap;
 #[macro_use]
 extern crate log;
 #[macro_use]

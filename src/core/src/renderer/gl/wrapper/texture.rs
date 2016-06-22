@@ -15,9 +15,12 @@ pub struct Texture {
 }
 
 impl Texture {
-    pub fn new(context: &Context, raw: &asset::Texture) -> Result<Texture, Error> {
-        raw.access(|w, h, data| {
+    pub fn new(context: &Context, texture: &asset::Asset<asset::Texture>) -> Result<Texture, Error> {
+        if let Some(raw) = texture.borrow() {
             unsafe {
+                let (w, h) = raw.size();
+                let data = raw.data();
+
                 let mut id = 0;
                 gl::GenTextures(1, &mut id);
 
@@ -34,15 +37,17 @@ impl Texture {
 
                 context.bind_texture_2d(0);
 
-                info!("Uploaded texture `{}` into GPU.", raw);
-                
+                info!("Uploaded texture `{}` into GPU.", texture.id());
+
                 Ok(Texture {
                     context: context.clone(),
                     id: id,
                     _raw: raw.clone(),
                 })
             }
-        }).unwrap_or(Err(From::from(format!("Failed to access texture `{}`", raw))))
+        } else {
+            Err(From::from(format!("Failed to access texture `{}`", texture.id())))
+        }
     }
 
     pub fn active(&self, unit: u32) {

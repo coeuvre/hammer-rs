@@ -9,6 +9,7 @@ build = "build.rs"
 gcc = "*"
 
 [dependencies]
+typemap = "*"
 gl = "*"
 log = "*"
 lazy_static = "*"

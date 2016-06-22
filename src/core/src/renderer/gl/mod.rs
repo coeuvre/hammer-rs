@@ -18,7 +18,7 @@ pub struct Renderer {
 
     window_to_clip_trans: Trans,
 
-    textures: HashMap<asset::AssetID, Texture>,
+    textures: HashMap<asset::AssetId, Texture>,
 }
 
 impl Renderer {
@@ -32,7 +32,6 @@ impl Renderer {
             quad: quad,
 
             window_to_clip_trans: Trans::identity(),
-
             textures: HashMap::new(),
         })
     }
@@ -95,7 +94,7 @@ pub struct Rect<'a> {
 }
 
 impl<'a> Rect<'a> {
-    pub fn texture<'b>(self, texture: &'b asset::Texture) -> TexturedRect<'a, 'b> {
+    pub fn texture<'b>(self, texture: &'b asset::Asset<asset::Texture>) -> TexturedRect<'a, 'b> {
         TexturedRect {
             renderer: self.renderer,
             texture: texture,
@@ -109,7 +108,7 @@ impl<'a> Rect<'a> {
 
 pub struct TexturedRect<'a, 'b> {
     renderer: &'a mut Renderer,
-    texture: &'b asset::Texture,
+    texture: &'b asset::Asset<asset::Texture>,
     x: f32,
     y: f32,
     w: f32,
@@ -123,6 +122,7 @@ impl<'a, 'b> Drawable for TexturedRect<'a, 'b> {
                 self.renderer.textures.insert(self.texture.id().clone(), texture);
             }
         }
+
         if let Some(texture) = self.renderer.textures.get(self.texture.id()) {
             self.renderer.quad.fill_with_texture(self.renderer.window_to_clip_trans, self.x, self.y, self.w, self.h, texture);
         }
