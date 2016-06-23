@@ -20,6 +20,7 @@ impl Resource for Image {
         "Image"
     }
 }
+
 unsafe impl Send for Image {}
 
 impl Loadable for Image {

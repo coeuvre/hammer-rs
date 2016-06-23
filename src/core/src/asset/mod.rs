@@ -33,7 +33,7 @@ pub trait Loadable: Sized {
     fn load<P: AsRef<Path>>(path: P) -> Result<Self, Error>;
 }
 
-pub enum AssetState<A> {
+enum AssetState<A> {
     Unloaded,
     Loading,
     Loaded(Box<A>),
@@ -45,9 +45,16 @@ pub struct Asset<A> {
     state: Arc<RwLock<AssetState<A>>>,
 }
 
-impl<A: Resource> Asset<A> {
+impl<A> Asset<A> {
     pub fn id(&self) -> &AssetId {
         &self.id
+    }
+
+    pub fn loaded(&self) -> bool {
+        match *self.state.read().unwrap() {
+            AssetState::Loaded(_) => true,
+            _ => false,
+        }
     }
 
     pub fn borrow(&self) -> Option<AssetRef<A>> {
@@ -56,14 +63,17 @@ impl<A: Resource> Asset<A> {
         match *guard {
             AssetState::Loaded(_) => {
                 Some(AssetRef {
-                     guard: guard,
-                  })
+                    asset: self,
+                    guard: guard,
+                })
             }
 
             _ => None,
         }
     }
+}
 
+impl<A: Resource> Asset<A> {
     pub fn load_with<F: FnOnce() -> Result<A, Error>>(&self, f: F) -> Result<(), Error> {
         let load = {
             let mut state = self.state.write().unwrap();
@@ -102,6 +112,13 @@ impl<A: Resource> Asset<A> {
             Err("Asset is loading".into())
         }
     }
+
+    pub fn access<T, F: FnOnce(AssetRef<A>) -> T>(&self, f: F) -> Result<T, Error> {
+        match self.borrow() {
+            Some(asset) => Ok(f(asset)),
+            None => Err(format!("Failed to access {}", self).into()),
+        }
+    }
 }
 
 impl<A: Resource + Loadable> Asset<A> {
@@ -132,7 +149,14 @@ impl<A: Resource> fmt::Display for Asset<A> {
 }
 
 pub struct AssetRef<'a, A: 'a> {
+    asset: &'a Asset<A>,
     guard: RwLockReadGuard<'a, AssetState<A>>,
+}
+
+impl<'a, A: 'a> AssetRef<'a, A> {
+    pub fn id(&self) -> &AssetId {
+        self.asset.id()
+    }
 }
 
 impl<'a, A: 'a> Deref for AssetRef<'a, A> {

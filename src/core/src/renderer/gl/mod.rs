@@ -93,11 +93,38 @@ pub struct Rect<'a> {
     h: f32,
 }
 
+pub trait AsTexture {
+    fn id(&self) -> &asset::AssetId;
+    fn as_texture(&self, renderer: &mut Renderer) -> Result<Texture, Error>;
+}
+
+impl AsTexture for asset::Asset<asset::image::Image> {
+    fn id(&self) -> &asset::AssetId {
+        self.id()
+    }
+
+    fn as_texture(&self, renderer: &mut Renderer) -> Result<Texture, Error> {
+        try!(self.access(|image| {
+            Texture::new(&renderer.context, &image)
+        }))
+    }
+}
+
+impl<'a> AsTexture for asset::AssetRef<'a, asset::image::Image> {
+    fn id(&self) -> &asset::AssetId {
+        self.id()
+    }
+
+    fn as_texture(&self, renderer: &mut Renderer) -> Result<Texture, Error> {
+        Texture::new(&renderer.context, self)
+    }
+}
+
 impl<'a> Rect<'a> {
-    pub fn texture<'b>(self, image: &'b asset::Asset<asset::image::Image>) -> TexturedRect<'a, 'b> {
+    pub fn texture<'b, T: AsTexture + 'b>(self, texture: &'b T) -> TexturedRect<'a, 'b, T> {
         TexturedRect {
             renderer: self.renderer,
-            texture: image,
+            texture: texture,
             x: self.x,
             y: self.y,
             w: self.w,
@@ -106,20 +133,27 @@ impl<'a> Rect<'a> {
     }
 }
 
-pub struct TexturedRect<'a, 'b> {
+pub struct TexturedRect<'a, 'b, T: 'b> {
     renderer: &'a mut Renderer,
-    texture: &'b asset::Asset<asset::image::Image>,
+    texture: &'b T,
     x: f32,
     y: f32,
     w: f32,
     h: f32,
 }
 
-impl<'a, 'b> Drawable for TexturedRect<'a, 'b> {
+impl<'a, 'b, T: AsTexture + 'b> Drawable for TexturedRect<'a, 'b, T> {
     fn draw(&mut self) {
         if !self.renderer.textures.contains_key(self.texture.id()) {
-            if let Ok(texture) = Texture::new(&self.renderer.context, self.texture) {
-                self.renderer.textures.insert(self.texture.id().clone(), texture);
+            match self.texture.as_texture(self.renderer) {
+                Ok(texture) => {
+                    self.renderer.textures.insert(self.texture.id().clone(), texture);
+                    info!("Uploaded Image({}) to GPU.", self.texture.id());
+                }
+
+                Err(e) => {
+                    warn!("{}", e)
+                }
             }
         }
 
