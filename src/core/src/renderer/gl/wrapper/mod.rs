@@ -198,10 +198,10 @@ impl Quad {
 
         const VERTICES: [f32; 16] = [
             // Positions // Texture Coords
-            0.0, 1.0,    0.0, 0.0,
-            1.0, 1.0,    1.0, 0.0,
-            0.0, 0.0,    0.0, 1.0,
-            1.0, 0.0,    1.0, 1.0,
+            0.0, 1.0,    0.0, 1.0,
+            1.0, 1.0,    1.0, 1.0,
+            0.0, 0.0,    0.0, 0.0,
+            1.0, 0.0,    1.0, 0.0,
         ];
 
         let mut program = try!(Program::compile_and_link(context, VERTEX_SHADER, FRAGMENT_SHADER));

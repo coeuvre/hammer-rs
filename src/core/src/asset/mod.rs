@@ -1,8 +1,8 @@
+use std::path::Path;
 use std::any::Any;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::fmt;
-use std::path::Path;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::{Mutex, RwLock, RwLockReadGuard};
@@ -12,6 +12,7 @@ use Error;
 use typemap::{TypeMap, Key};
 
 pub mod image;
+pub mod sprite;
 
 pub type AssetId = String;
 
@@ -21,7 +22,7 @@ pub trait AsAssetId {
 
 impl<'a> AsAssetId for &'a str {
     fn as_asset_id(&self) -> AssetId {
-        self.to_string()
+        ::std::string::ToString::to_string(self)
     }
 }
 
@@ -29,8 +30,34 @@ pub trait Resource: Any + Send {
     fn type_name() -> &'static str;
 }
 
-pub trait Loadable: Sized {
-    fn load<P: AsRef<Path>>(path: P) -> Result<Self, Error>;
+pub trait Source {
+    fn to_string(&self) -> String;
+}
+
+impl<A: Resource> Source for Asset<A> {
+    fn to_string(&self) -> String {
+        format!("{}", self)
+    }
+}
+
+impl<'a, A: Resource> Source for &'a Asset<A> {
+    fn to_string(&self) -> String {
+        format!("{}", self)
+    }
+}
+
+impl<P: AsRef<Path>> Source for P {
+    fn to_string(&self) -> String {
+        format!("{}", self.as_ref().display())
+    }
+}
+
+pub trait Loadable<S: Source>: Sized {
+    fn load(src: S) -> Result<Self, Error>;
+}
+
+pub trait Loader<S: Source> {
+    fn load(&self, src: S) -> Result<(), Error>;
 }
 
 enum AssetState<A> {
@@ -46,6 +73,13 @@ pub struct Asset<A> {
 }
 
 impl<A> Asset<A> {
+    pub fn new(id: AssetId) -> Asset<A> {
+        Asset {
+            id: id,
+            state: Arc::new(RwLock::new(AssetState::Unloaded)),
+        }
+    }
+
     pub fn id(&self) -> &AssetId {
         &self.id
     }
@@ -121,12 +155,13 @@ impl<A: Resource> Asset<A> {
     }
 }
 
-impl<A: Resource + Loadable> Asset<A> {
-    pub fn load<P: AsRef<Path>>(&self, path: P) -> Result<(), Error> {
+impl<A: Resource + Loadable<S>, S: Source> Loader<S> for Asset<A> {
+    fn load(&self, src: S) -> Result<(), Error> {
         self.load_with(|| {
-            let result = A::load(path.as_ref());
+            let src_string = src.to_string();
+            let result = A::load(src);
             if result.is_ok() {
-                info!("Loaded {} from {}.", self, path.as_ref().display());
+                info!("Loaded {} from {}.", self, src_string);
             }
             result
         })
@@ -224,10 +259,7 @@ impl Slots {
             return asset.clone();
         }
 
-        let asset = Asset {
-            id: id.clone(),
-            state: Arc::new(RwLock::new(AssetState::Unloaded)),
-        };
+        let asset = Asset::new(id.clone());
 
         slots.insert(id.clone(), asset.clone());
 

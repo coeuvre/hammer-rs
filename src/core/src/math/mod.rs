@@ -8,6 +8,35 @@ pub struct Vec2 {
     pub y: Scalar,
 }
 
+pub fn vec2(x: Scalar, y: Scalar) -> Vec2 {
+    Vec2 {
+        x: x,
+        y: y,
+    }
+}
+
+pub struct Rect {
+    min: Vec2,
+    max: Vec2,
+}
+
+impl Rect {
+    pub fn with_min_max(min: Vec2, max: Vec2) -> Rect {
+        Rect {
+            min: min,
+            max: max,
+        }
+    }
+
+    pub fn min(&self) -> &Vec2 {
+        &self.min
+    }
+
+    pub fn max(&self) -> &Vec2 {
+        &self.max
+    }
+}
+
 /// The affine transform matrix:
 ///
 ///     | a c x |    | x y o |
