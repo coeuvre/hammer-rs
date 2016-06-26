@@ -12,13 +12,15 @@ use math::Trans;
 
 pub mod wrapper;
 
+pub type TextureCache = HashMap<u64, Texture>;
+
 pub struct Renderer {
     context: Context,
     quad: Quad,
 
     window_to_clip_trans: Trans,
 
-    textures: HashMap<asset::AssetId, Texture>,
+    textures: TextureCache,
 }
 
 impl Renderer {
@@ -32,7 +34,7 @@ impl Renderer {
             quad: quad,
 
             window_to_clip_trans: Trans::identity(),
-            textures: HashMap::new(),
+            textures: TextureCache::new(),
         })
     }
 
@@ -94,29 +96,38 @@ pub struct Rect<'a> {
 }
 
 pub trait AsTexture {
-    fn id(&self) -> &asset::AssetId;
-    fn as_texture(&self, renderer: &mut Renderer) -> Result<Texture, Error>;
+    fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<&'r Texture, Error>;
 }
 
-impl AsTexture for asset::Asset<asset::image::Image> {
-    fn id(&self) -> &asset::AssetId {
-        self.id()
-    }
+impl<'a> AsTexture for asset::image::Image {
+    fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<&'r Texture, Error> {
+        let id = self.id();
+        if !textures.contains_key(&id) {
+            match Texture::new(&context, self) {
+                Ok(texture) => {
+                    textures.insert(id, texture);
+                }
 
-    fn as_texture(&self, renderer: &mut Renderer) -> Result<Texture, Error> {
-        try!(self.access(|image| {
-            Texture::new(&renderer.context, &image)
-        }))
+                Err(e) => return Err(e),
+            }
+        }
+
+        Ok(textures.get(&id).unwrap())
     }
 }
 
-impl<'a> AsTexture for asset::AssetRef<'a, asset::image::Image> {
-    fn id(&self) -> &asset::AssetId {
-        self.id()
+impl AsTexture for asset::Handle<asset::image::Image> {
+    fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<&'r Texture, Error> {
+        match self.read() {
+            Some(image) => image.as_texture(context, textures),
+            None => Err("Failed to read image".into()),
+        }
     }
+}
 
-    fn as_texture(&self, renderer: &mut Renderer) -> Result<Texture, Error> {
-        Texture::new(&renderer.context, self)
+impl<'a> AsTexture for asset::AssetLockReadGuard<'a, asset::image::Image> {
+    fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<&'r Texture, Error> {
+        ((&(**self) as &asset::image::Image) as &AsTexture).as_texture(context, textures)
     }
 }
 
@@ -144,20 +155,7 @@ pub struct TexturedRect<'a, 'b, T: 'b> {
 
 impl<'a, 'b, T: AsTexture + 'b> Drawable for TexturedRect<'a, 'b, T> {
     fn draw(&mut self) {
-        if !self.renderer.textures.contains_key(self.texture.id()) {
-            match self.texture.as_texture(self.renderer) {
-                Ok(texture) => {
-                    self.renderer.textures.insert(self.texture.id().clone(), texture);
-                    info!("Uploaded Image({}) to GPU.", self.texture.id());
-                }
-
-                Err(e) => {
-                    warn!("{}", e)
-                }
-            }
-        }
-
-        if let Some(texture) = self.renderer.textures.get(self.texture.id()) {
+        if let Ok(texture) = self.texture.as_texture(&self.renderer.context, &mut self.renderer.textures) {
             self.renderer.quad.fill_with_texture(self.renderer.window_to_clip_trans, self.x, self.y, self.w, self.h, texture);
         }
     }

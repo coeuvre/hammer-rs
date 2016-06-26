@@ -9,7 +9,6 @@ pub mod asset;
 pub mod window;
 pub mod renderer;
 pub mod math;
-
-mod util;
+pub mod util;
 
 pub type Error = Box<std::error::Error + Send + Sync>;

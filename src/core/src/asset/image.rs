@@ -9,23 +9,47 @@ use Error;
 use util::stb_image::*;
 use util::cstr_to_string;
 
+use util::counter::Counter;
+
+lazy_static! {
+    static ref COUNTER: Counter = Counter::new();
+}
+
+#[derive(Clone)]
 pub struct Image {
+    id: u64,
     w: i32,
     h: i32,
     data: Vec<u8>,
 }
 
-impl Resource for Image {
-    fn type_name() -> &'static str {
+impl Image {
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
+    pub fn size(&self) -> (i32, i32) {
+        (self.w, self.h)
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+}
+
+impl Asset for Image {
+    fn name() -> &'static str {
         "Image"
     }
 }
 
-unsafe impl Send for Image {}
+impl<P: AsRef<Path>> Source<Image> for P {
+    fn to_string(&self) -> String {
+        format!("{}", self.as_ref().display())
+    }
 
-impl<S: AsRef<Path>> Loadable<S> for Image {
-    fn load(src: S) -> Result<Image, Error> {
-        let path = src.as_ref();
+    fn load(&self) -> Result<Image, Error> {
+        let path = self.as_ref();
         unsafe {
             let cstr = CString::new(&*path.as_os_str().to_string_lossy()).unwrap();
             let mut w = 0;
@@ -37,11 +61,12 @@ impl<S: AsRef<Path>> Loadable<S> for Image {
                 {
                     let data = ::std::slice::from_raw_parts(data, (w * 4 * h) as usize);
                     for row in data.chunks((w * 4) as usize).rev() {
-                        pixels.extend(row);
+                        pixels.extend_from_slice(row);
                     }
                 }
                 stbi_image_free(data);
                 Ok(Image {
+                    id: COUNTER.next(),
                     w: w,
                     h: h,
                     data: pixels,
@@ -50,15 +75,5 @@ impl<S: AsRef<Path>> Loadable<S> for Image {
                 Err(format!("Failed to load {}: {}", path.display(), cstr_to_string(stbi_failure_reason())).into())
             }
         }
-    }
-}
-
-impl Image {
-    pub fn size(&self) -> (i32, i32) {
-        (self.w, self.h)
-    }
-
-    pub fn data(&self) -> &[u8] {
-        &self.data
     }
 }

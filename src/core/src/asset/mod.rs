@@ -1,83 +1,98 @@
-use std::path::Path;
+use std::mem;
 use std::any::Any;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::fmt;
 use std::ops::Deref;
-use std::sync::Arc;
-use std::sync::{Mutex, RwLock, RwLockReadGuard};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
 
 use Error;
 
 use typemap::{TypeMap, Key};
 
 pub mod image;
-pub mod sprite;
+// pub mod sprite;
 
 pub type AssetId = String;
 
-pub trait AsAssetId {
-    fn as_asset_id(&self) -> AssetId;
+pub trait ToAssetId {
+    fn to_asset_id(&self) -> AssetId;
 }
 
-impl<'a> AsAssetId for &'a str {
-    fn as_asset_id(&self) -> AssetId {
+impl<'a> ToAssetId for &'a str {
+    fn to_asset_id(&self) -> AssetId {
         ::std::string::ToString::to_string(self)
     }
 }
 
-pub trait Resource: Any + Send {
-    fn type_name() -> &'static str;
+pub trait Asset: Any {
+    fn name() -> &'static str;
 }
 
-pub trait Source {
+pub trait Source<A: Asset> {
     fn to_string(&self) -> String;
+    fn load(&self) -> Result<A, Error>;
 }
 
-impl<A: Resource> Source for Asset<A> {
-    fn to_string(&self) -> String {
-        format!("{}", self)
-    }
-}
-
-impl<'a, A: Resource> Source for &'a Asset<A> {
-    fn to_string(&self) -> String {
-        format!("{}", self)
-    }
-}
-
-impl<P: AsRef<Path>> Source for P {
-    fn to_string(&self) -> String {
-        format!("{}", self.as_ref().display())
-    }
-}
-
-pub trait Loadable<S: Source>: Sized {
-    fn load(src: S) -> Result<Self, Error>;
-}
-
-pub trait Loader<S: Source> {
-    fn load(&self, src: S) -> Result<(), Error>;
-}
-
-enum AssetState<A> {
+enum AssetState<A: Asset> {
     Unloaded,
     Loading,
-    Loaded(Box<A>),
+    Loaded(A),
     LoadError(Error),
 }
 
-pub struct Asset<A> {
+pub struct Handle<A: Asset> {
     id: AssetId,
-    state: Arc<RwLock<AssetState<A>>>,
+    asset: Arc<RwLock<AssetState<A>>>,
 }
 
-impl<A> Asset<A> {
-    pub fn new(id: AssetId) -> Asset<A> {
-        Asset {
+impl<A: Asset> Handle<A> {
+    fn new(id: AssetId) -> Handle<A> {
+        Handle {
             id: id,
-            state: Arc::new(RwLock::new(AssetState::Unloaded)),
+            asset: Arc::new(RwLock::new(AssetState::Unloaded)),
         }
+    }
+
+    pub fn load<S: Source<A>>(&self, src: S) -> Result<(), Error> {
+        {
+            let mut asset = self.asset.write().unwrap();
+            match *asset {
+                AssetState::Loading => {
+                    return Err(format!("Asset {} is loading.", self).into());
+                }
+
+                _ => {
+                    *asset = AssetState::Loading;
+                }
+            }
+        }
+
+        let src_string = src.to_string();
+        let result = src.load();
+
+        let mut asset = self.asset.write().unwrap();
+
+        match *asset {
+            AssetState::Loading => {
+                match result {
+                    Ok(c) => {
+                        *asset = AssetState::Loaded(c);
+                        info!("Loaded {} from {}.", self, src_string);
+                    }
+
+                    Err(e) => {
+                        let err = Err(format!("{}", e).into());
+                        *asset = AssetState::LoadError(e);
+                        return err;
+                    }
+                }
+            }
+
+            _ => { return Err("Interupted".into()) }
+        }
+
+        Ok(())
     }
 
     pub fn id(&self) -> &AssetId {
@@ -85,117 +100,61 @@ impl<A> Asset<A> {
     }
 
     pub fn loaded(&self) -> bool {
-        match *self.state.read().unwrap() {
+        match *self.asset.read().unwrap() {
             AssetState::Loaded(_) => true,
             _ => false,
         }
     }
 
-    pub fn borrow(&self) -> Option<AssetRef<A>> {
-        // Panic if can't read
-        let guard = self.state.try_read().unwrap();
-        match *guard {
+    pub fn read(&self) -> Option<AssetLockReadGuard<A>> {
+        let asset = self.asset.read().unwrap();
+        match *asset {
             AssetState::Loaded(_) => {
-                Some(AssetRef {
-                    asset: self,
-                    guard: guard,
+                Some(AssetLockReadGuard {
+                    guard: asset
                 })
             }
 
             _ => None,
         }
     }
-}
 
-impl<A: Resource> Asset<A> {
-    pub fn load_with<F: FnOnce() -> Result<A, Error>>(&self, f: F) -> Result<(), Error> {
-        let load = {
-            let mut state = self.state.write().unwrap();
-            match *state {
-                AssetState::Loading => {
-                    false
-                }
+    pub fn set(&self, asset: A) -> Option<A> {
+        let mut new_asset = AssetState::Loaded(asset);
+        let mut asset = self.asset.write().unwrap();
 
-                _ => {
-                    *state = AssetState::Loading;
-                    true
-                }
-            }
-        };
+        mem::swap(&mut *asset, &mut new_asset);
 
-        if load {
-            let mut err = None;
-
-            let new_state = match f() {
-                Ok(asset) => AssetState::Loaded(Box::new(asset)),
-                Err(e) => {
-                    err = Some(format!("{}", e));
-                    AssetState::LoadError(e)
-                }
-            };
-
-            let mut state = self.state.write().unwrap();
-            *state = new_state;
-
-            if let Some(e) = err {
-                Err(e.into())
-            } else {
-                Ok(())
-            }
-        } else {
-            Err("Asset is loading".into())
-        }
-    }
-
-    pub fn access<T, F: FnOnce(AssetRef<A>) -> T>(&self, f: F) -> Result<T, Error> {
-        match self.borrow() {
-            Some(asset) => Ok(f(asset)),
-            None => Err(format!("Failed to access {}", self).into()),
+        let old_asset = new_asset;
+        match old_asset {
+            AssetState::Loaded(asset) => Some(asset),
+            _ => None,
         }
     }
 }
 
-impl<A: Resource + Loadable<S>, S: Source> Loader<S> for Asset<A> {
-    fn load(&self, src: S) -> Result<(), Error> {
-        self.load_with(|| {
-            let src_string = src.to_string();
-            let result = A::load(src);
-            if result.is_ok() {
-                info!("Loaded {} from {}.", self, src_string);
-            }
-            result
-        })
-    }
-}
-
-impl<A> Clone for Asset<A> {
+impl<A: Asset> Clone for Handle<A> {
     fn clone(&self) -> Self {
-        Asset {
+        Handle {
             id: self.id.clone(),
-            state: self.state.clone(),
+            asset: self.asset.clone(),
         }
     }
 }
 
-impl<A: Resource> fmt::Display for Asset<A> {
+impl<A: Asset> fmt::Display for Handle<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}({})", A::type_name(), self.id())
+        write!(f, "{}({})", A::name(), self.id())
     }
 }
 
-pub struct AssetRef<'a, A: 'a> {
-    asset: &'a Asset<A>,
+pub struct AssetLockReadGuard<'a, A: Asset + 'a> {
     guard: RwLockReadGuard<'a, AssetState<A>>,
 }
 
-impl<'a, A: 'a> AssetRef<'a, A> {
-    pub fn id(&self) -> &AssetId {
-        self.asset.id()
-    }
-}
-
-impl<'a, A: 'a> Deref for AssetRef<'a, A> {
+impl<'a, A: Asset + 'a> Deref for AssetLockReadGuard<'a, A> {
     type Target = A;
+
     fn deref(&self) -> &A {
         match *self.guard {
             AssetState::Loaded(ref asset) => {
@@ -207,20 +166,24 @@ impl<'a, A: 'a> Deref for AssetRef<'a, A> {
     }
 }
 
-pub fn asset<A: Resource>() -> AssetWrapper<A> {
-    AssetWrapper {
-        phantom: PhantomData,
-    }
-}
-
-pub struct AssetWrapper<A> {
+#[allow(non_camel_case_types)]
+pub struct asset<A: Asset> {
     phantom: PhantomData<A>,
 }
 
-impl<A: Resource> AssetWrapper<A> {
-    pub fn get<I: AsAssetId>(&self, id: I) -> Asset<A> {
-        let id = id.as_asset_id();
-        ASSETS.slots.acquire::<A>(&id)
+impl<A: Asset> asset<A> {
+    pub fn new() -> Handle<A> {
+        unimplemented!()
+    }
+
+    pub fn with_id<I: ToAssetId>(id: I) -> Handle<A> {
+        let id = id.to_asset_id();
+        ASSETS.slots.acquire::<A>(id)
+    }
+
+    pub fn get<I: ToAssetId>(id: I) -> Option<Handle<A>> {
+        let id = id.to_asset_id();
+        ASSETS.slots.get::<A>(&id)
     }
 }
 
@@ -251,19 +214,25 @@ impl Slots {
         }
     }
 
-    fn acquire<A: Resource>(&self, id: &AssetId) -> Asset<A> {
+    fn get<A: Asset>(&self, id: &AssetId) -> Option<Handle<A>> {
+        let mut type_slots = self.slots.lock().unwrap();
+        let slots = type_slots.entry::<AssetTypeMapKey<A>>().or_insert_with(|| HashMap::new());
+        slots.get(id).cloned()
+    }
+
+    fn acquire<A: Asset>(&self, id: AssetId) -> Handle<A> {
         let mut type_slots = self.slots.lock().unwrap();
         let slots = type_slots.entry::<AssetTypeMapKey<A>>().or_insert_with(|| HashMap::new());
 
-        if let Some(asset) = slots.get(id) {
+        if let Some(asset) = slots.get(&id) {
             return asset.clone();
         }
 
-        let asset = Asset::new(id.clone());
+        let handle = Handle::new(id.clone());
 
-        slots.insert(id.clone(), asset.clone());
+        slots.insert(id, handle.clone());
 
-        asset
+        handle
     }
 }
 
@@ -274,6 +243,6 @@ struct AssetTypeMapKey<A> {
     phantom: PhantomData<A>,
 }
 
-impl<A: Resource> Key for AssetTypeMapKey<A> {
-    type Value = HashMap<AssetId, Asset<A>>;
+impl<A: Asset> Key for AssetTypeMapKey<A> {
+    type Value = HashMap<AssetId, Handle<A>>;
 }
