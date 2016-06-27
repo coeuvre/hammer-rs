@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::ptr;
 use std::ffi::CString;
+use std::sync::{Arc, RwLock, RwLockReadGuard};
 
 use super::*;
 
@@ -17,13 +18,27 @@ lazy_static! {
 
 #[derive(Clone)]
 pub struct Image {
+    content: Arc<RwLock<Content>>,
+}
+
+impl Image {
+    pub fn load<S: Source<Image>>(src: S) -> Result<Image, Error> {
+        src.load()
+    }
+
+    pub fn read(&self) -> RwLockReadGuard<Content> {
+        self.content.read().unwrap()
+    }
+}
+
+pub struct Content {
     id: u64,
     w: i32,
     h: i32,
     data: Vec<u8>,
 }
 
-impl Image {
+impl Content {
     pub fn id(&self) -> u64 {
         self.id
     }
@@ -66,10 +81,12 @@ impl<P: AsRef<Path>> Source<Image> for P {
                 }
                 stbi_image_free(data);
                 Ok(Image {
-                    id: COUNTER.next(),
-                    w: w,
-                    h: h,
-                    data: pixels,
+                    content: Arc::new(RwLock::new(Content {
+                        id: COUNTER.next(),
+                        w: w,
+                        h: h,
+                        data: pixels,
+                    })),
                 })
             } else {
                 Err(format!("Failed to load {}: {}", path.display(), cstr_to_string(stbi_failure_reason())).into())

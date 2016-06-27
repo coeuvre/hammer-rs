@@ -101,7 +101,7 @@ pub trait AsTexture {
 
 impl<'a> AsTexture for asset::image::Image {
     fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<&'r Texture, Error> {
-        let id = self.id();
+        let id = self.read().id();
         if !textures.contains_key(&id) {
             match Texture::new(&context, self) {
                 Ok(texture) => {
@@ -118,16 +118,10 @@ impl<'a> AsTexture for asset::image::Image {
 
 impl AsTexture for asset::Handle<asset::image::Image> {
     fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<&'r Texture, Error> {
-        match self.read() {
+        match self.get() {
             Some(image) => image.as_texture(context, textures),
             None => Err("Failed to read image".into()),
         }
-    }
-}
-
-impl<'a> AsTexture for asset::AssetLockReadGuard<'a, asset::image::Image> {
-    fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<&'r Texture, Error> {
-        ((&(**self) as &asset::image::Image) as &AsTexture).as_texture(context, textures)
     }
 }
 

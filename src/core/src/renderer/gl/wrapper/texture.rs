@@ -16,6 +16,7 @@ pub struct Texture {
 impl Texture {
     pub fn new(context: &Context, image: &asset::image::Image) -> Result<Texture, Error> {
         unsafe {
+            let image = image.read();
             let (w, h) = image.size();
             let data = image.data();
 

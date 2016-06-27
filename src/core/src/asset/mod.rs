@@ -3,15 +3,14 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::fmt;
-use std::ops::Deref;
-use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
+use std::sync::{Arc, Mutex, RwLock};
 
 use Error;
 
 use typemap::{TypeMap, Key};
 
 pub mod image;
-// pub mod sprite;
+pub mod sprite;
 
 pub type AssetId = String;
 
@@ -25,7 +24,7 @@ impl<'a> ToAssetId for &'a str {
     }
 }
 
-pub trait Asset: Any {
+pub trait Asset: Any + Clone + Send + Sync {
     fn name() -> &'static str;
 }
 
@@ -89,7 +88,7 @@ impl<A: Asset> Handle<A> {
                 }
             }
 
-            _ => { return Err("Interupted".into()) }
+            _ => { return Err("Loading interupted".into()) }
         }
 
         Ok(())
@@ -106,13 +105,11 @@ impl<A: Asset> Handle<A> {
         }
     }
 
-    pub fn read(&self) -> Option<AssetLockReadGuard<A>> {
+    pub fn get(&self) -> Option<A> {
         let asset = self.asset.read().unwrap();
         match *asset {
-            AssetState::Loaded(_) => {
-                Some(AssetLockReadGuard {
-                    guard: asset
-                })
+            AssetState::Loaded(ref asset) => {
+                Some(asset.clone())
             }
 
             _ => None,
@@ -145,24 +142,6 @@ impl<A: Asset> Clone for Handle<A> {
 impl<A: Asset> fmt::Display for Handle<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}({})", A::name(), self.id())
-    }
-}
-
-pub struct AssetLockReadGuard<'a, A: Asset + 'a> {
-    guard: RwLockReadGuard<'a, AssetState<A>>,
-}
-
-impl<'a, A: Asset + 'a> Deref for AssetLockReadGuard<'a, A> {
-    type Target = A;
-
-    fn deref(&self) -> &A {
-        match *self.guard {
-            AssetState::Loaded(ref asset) => {
-                asset
-            }
-
-            _ => unreachable!(),
-        }
     }
 }
 
