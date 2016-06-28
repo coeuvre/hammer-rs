@@ -53,7 +53,7 @@ impl<A: Asset> Handle<A> {
         }
     }
 
-    pub fn load<S: Source<A>>(&self, src: S) -> Result<(), Error> {
+    pub fn load<S: Source<A>>(self, src: S) -> Result<A, Error> {
         {
             let mut asset = self.asset.write().unwrap();
             match *asset {
@@ -76,22 +76,21 @@ impl<A: Asset> Handle<A> {
             AssetState::Loading => {
                 match result {
                     Ok(c) => {
-                        *asset = AssetState::Loaded(c);
+                        *asset = AssetState::Loaded(c.clone());
                         info!("Loaded {} from {}.", self, src_string);
+                        Ok(c)
                     }
 
                     Err(e) => {
                         let err = Err(format!("{}", e).into());
                         *asset = AssetState::LoadError(e);
-                        return err;
+                        err
                     }
                 }
             }
 
-            _ => { return Err("Loading interupted".into()) }
+            _ => Err("Loading interupted".into()),
         }
-
-        Ok(())
     }
 
     pub fn id(&self) -> &AssetId {
