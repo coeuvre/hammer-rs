@@ -1,38 +1,25 @@
-use std::sync::{Arc, RwLock, RwLockReadGuard};
-
 use super::*;
 
 use math::*;
 
-#[derive(Clone)]
+pub type SpriteRef = AssetRef<Sprite>;
+
 pub struct Sprite {
-    content: Arc<RwLock<Content>>,
-}
-
-impl Sprite {
-    pub fn new(image: &Image, region: Rect, anchor: Vec2) -> Sprite {
-        Sprite {
-            content: Arc::new(RwLock::new(Content {
-                image: image.clone(),
-                region: region,
-                anchor: anchor,
-            })),
-        }
-    }
-
-    pub fn read(&self) -> RwLockReadGuard<Content> {
-        self.content.read().unwrap()
-    }
-}
-
-pub struct Content {
-    image: Image,
+    image: ImageRef,
     region: Rect,
     anchor: Vec2,
 }
 
-impl Content {
-    pub fn image(&self) -> &Image {
+impl Sprite {
+    pub fn new(image: &ImageRef, region: Rect, anchor: Vec2) -> Sprite {
+        Sprite {
+            image: image.clone(),
+            region: region,
+            anchor: anchor,
+        }
+    }
+
+    pub fn image(&self) -> &ImageRef {
         &self.image
     }
 

@@ -100,7 +100,7 @@ pub trait AsTexture {
 
 impl<'a> AsTexture for Image {
     fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error> {
-        let id = self.read().id();
+        let id = self.id();
         if !textures.contains_key(&id) {
             match Texture::new(&context, self) {
                 Ok(texture) => {
@@ -122,11 +122,10 @@ impl<'a> AsTexture for Image {
 
 impl<'a> AsTexture for Sprite {
     fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error> {
-        let sprite = self.read();
-        let image = sprite.image();
-        let id = image.read().id();
+        let image = self.image().read();
+        let id = image.id();
         if !textures.contains_key(&id) {
-            match Texture::new(&context, image) {
+            match Texture::new(&context, &*image) {
                 Ok(texture) => {
                     textures.insert(id, texture);
                 }
@@ -138,12 +137,18 @@ impl<'a> AsTexture for Sprite {
         let texture = textures.get(&id).unwrap();
         Ok(TextureRef {
             texture: texture,
-            src: *sprite.region(),
+            src: *self.region(),
         })
     }
 }
 
-impl<A: Asset + AsTexture> AsTexture for Handle<A> {
+impl<A: Asset + AsTexture> AsTexture for AssetRef<A> {
+    fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error> {
+        self.read().as_texture(context, textures)
+    }
+}
+
+impl<A: Asset> AsTexture for Slot<A> where AssetRef<A>: AsTexture {
     fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error> {
         match self.get() {
             Some(asset) => asset.as_texture(context, textures),

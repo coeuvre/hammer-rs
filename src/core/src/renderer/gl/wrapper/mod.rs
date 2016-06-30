@@ -249,7 +249,12 @@ impl QuadProgram {
     }
 
     pub fn fill_with_texture(&mut self, window_to_clip_trans: Trans, dst: &Rect, texture: &Texture, src: &Rect) {
-        unsafe { gl::Enable(gl::FRAMEBUFFER_SRGB); }
+        unsafe {
+            gl::Enable(gl::FRAMEBUFFER_SRGB);
+            gl::Enable(gl::BLEND);
+            gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
+            gl::BlendEquation(gl::FUNC_ADD);
+         }
 
         self.program.active();
 
