@@ -6,21 +6,25 @@ use super::gl::types::*;
 use super::Context;
 
 use Error;
-use asset;
+
+use asset::image::Image;
+use math::*;
 
 pub struct Texture {
     context: Context,
     id: GLuint,
+    image: Image,
 }
 
 impl Texture {
-    pub fn new(context: &Context, image: &asset::image::Image) -> Result<Texture, Error> {
+    pub fn new(context: &Context, image: &Image) -> Result<Texture, Error> {
+        let mut id = 0;
+        
         unsafe {
             let image = image.read();
             let (w, h) = image.size();
             let data = image.data();
 
-            let mut id = 0;
             gl::GenTextures(1, &mut id);
 
             context.bind_texture_2d(id);
@@ -35,17 +39,24 @@ impl Texture {
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
 
             context.bind_texture_2d(0);
-
-            Ok(Texture {
-                context: context.clone(),
-                id: id,
-            })
         }
+
+        Ok(Texture {
+            context: context.clone(),
+            id: id,
+            image: image.clone(),
+        })
     }
 
     pub fn active(&self, unit: u32) {
         self.context.active_texture(gl::TEXTURE0 + unit);
         self.context.bind_texture_2d(self.id);
+    }
+
+    pub fn size(&self) -> Vec2 {
+        let image = self.image.read();
+        let (w, h) = image.size();
+        vec2(w as f32, h as f32)
     }
 }
 

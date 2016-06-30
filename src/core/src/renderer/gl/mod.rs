@@ -7,8 +7,8 @@ use window::Window;
 use self::wrapper::*;
 use super::Drawable;
 
-use asset;
-use math::Trans;
+use asset::*;
+use math::*;
 
 pub mod wrapper;
 
@@ -16,7 +16,7 @@ pub type TextureCache = HashMap<u64, Texture>;
 
 pub struct Renderer {
     context: Context,
-    quad: Quad,
+    quad: QuadProgram,
 
     window_to_clip_trans: Trans,
 
@@ -27,7 +27,7 @@ impl Renderer {
     pub fn new(window: &Window) -> Result<Renderer, Error> {
         let context = Context::new(window);
 
-        let quad = try!(Quad::new(&context));
+        let quad = try!(QuadProgram::new(&context));
 
         Ok(Renderer {
             context: context,
@@ -76,31 +76,30 @@ impl Renderer {
         self.window_to_clip_trans = Trans::offset(-1.0, -1.0) * trans;
     }
 
-    pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32) -> Rect {
-        Rect {
+    pub fn rect(&mut self, rect: Rect) -> Quad {
+        Quad {
             renderer: self,
-            x: x,
-            y: y,
-            w: w,
-            h: h,
+            rect: rect,
         }
     }
 }
 
-pub struct Rect<'a> {
+pub struct Quad<'a> {
     renderer: &'a mut Renderer,
-    x: f32,
-    y: f32,
-    w: f32,
-    h: f32,
+    rect: Rect,
+}
+
+pub struct TextureRef<'a> {
+    texture: &'a Texture,
+    src: Rect,
 }
 
 pub trait AsTexture {
-    fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<&'r Texture, Error>;
+    fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error>;
 }
 
-impl<'a> AsTexture for asset::image::Image {
-    fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<&'r Texture, Error> {
+impl<'a> AsTexture for Image {
+    fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error> {
         let id = self.read().id();
         if !textures.contains_key(&id) {
             match Texture::new(&context, self) {
@@ -112,45 +111,67 @@ impl<'a> AsTexture for asset::image::Image {
             }
         }
 
-        Ok(textures.get(&id).unwrap())
+        let texture = textures.get(&id).unwrap();
+        let size = texture.size();
+        Ok(TextureRef {
+            texture: texture,
+            src: Rect::with_min_size(vec2(0.0, 0.0), size)
+        })
     }
 }
 
-impl AsTexture for asset::Handle<asset::image::Image> {
-    fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<&'r Texture, Error> {
+impl<'a> AsTexture for Sprite {
+    fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error> {
+        let sprite = self.read();
+        let image = sprite.image();
+        let id = image.read().id();
+        if !textures.contains_key(&id) {
+            match Texture::new(&context, image) {
+                Ok(texture) => {
+                    textures.insert(id, texture);
+                }
+
+                Err(e) => return Err(e),
+            }
+        }
+
+        let texture = textures.get(&id).unwrap();
+        Ok(TextureRef {
+            texture: texture,
+            src: *sprite.region(),
+        })
+    }
+}
+
+impl<A: Asset + AsTexture> AsTexture for Handle<A> {
+    fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error> {
         match self.get() {
-            Some(image) => image.as_texture(context, textures),
-            None => Err("Failed to read image".into()),
+            Some(asset) => asset.as_texture(context, textures),
+            None => Err(format!("Failed to read {}", self).into()),
         }
     }
 }
 
-impl<'a> Rect<'a> {
-    pub fn texture<'b, T: AsTexture + 'b>(self, texture: &'b T) -> TexturedRect<'a, 'b, T> {
-        TexturedRect {
+impl<'a> Quad<'a> {
+    pub fn texture<'b, T: AsTexture + 'b>(self, texture: &'b T) -> TexturedQuad<'a, 'b, T> {
+        TexturedQuad {
             renderer: self.renderer,
             texture: texture,
-            x: self.x,
-            y: self.y,
-            w: self.w,
-            h: self.h,
+            dst: self.rect,
         }
     }
 }
 
-pub struct TexturedRect<'a, 'b, T: 'b> {
+pub struct TexturedQuad<'a, 'b, T: 'b> {
     renderer: &'a mut Renderer,
     texture: &'b T,
-    x: f32,
-    y: f32,
-    w: f32,
-    h: f32,
+    dst: Rect,
 }
 
-impl<'a, 'b, T: AsTexture + 'b> Drawable for TexturedRect<'a, 'b, T> {
+impl<'a, 'b, T: AsTexture + 'b> Drawable for TexturedQuad<'a, 'b, T> {
     fn draw(&mut self) {
         if let Ok(texture) = self.texture.as_texture(&self.renderer.context, &mut self.renderer.textures) {
-            self.renderer.quad.fill_with_texture(self.renderer.window_to_clip_trans, self.x, self.y, self.w, self.h, texture);
+            self.renderer.quad.fill_with_texture(self.renderer.window_to_clip_trans, &self.dst, texture.texture, &texture.src);
         }
     }
 }

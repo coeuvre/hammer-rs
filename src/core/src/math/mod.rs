@@ -1,4 +1,4 @@
-use std::ops::Mul;
+use std::ops::{Add, Sub, Mul};
 
 pub type Scalar = f32;
 
@@ -8,6 +8,7 @@ pub struct Vec2 {
     pub y: Scalar,
 }
 
+#[inline(always)]
 pub fn vec2(x: Scalar, y: Scalar) -> Vec2 {
     Vec2 {
         x: x,
@@ -15,6 +16,23 @@ pub fn vec2(x: Scalar, y: Scalar) -> Vec2 {
     }
 }
 
+impl Add for Vec2 {
+    type Output = Vec2;
+
+    fn add(self, rhs: Vec2) -> Vec2 {
+        vec2(self.x + rhs.x, self.y + rhs.y)
+    }
+}
+
+impl Sub for Vec2 {
+    type Output = Vec2;
+
+    fn sub(self, rhs: Vec2) -> Vec2 {
+        vec2(self.x - rhs.x, self.y - rhs.y)
+    }
+}
+
+#[derive(Copy, Clone, PartialEq)]
 pub struct Rect {
     min: Vec2,
     max: Vec2,
@@ -28,12 +46,23 @@ impl Rect {
         }
     }
 
+    pub fn with_min_size(min: Vec2, size: Vec2) -> Rect {
+        Rect {
+            min: min,
+            max: min + size,
+        }
+    }
+
     pub fn min(&self) -> &Vec2 {
         &self.min
     }
 
     pub fn max(&self) -> &Vec2 {
         &self.max
+    }
+
+    pub fn size(&self) -> Vec2 {
+        self.max - self.min
     }
 }
 

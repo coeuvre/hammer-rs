@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use self::gl::types::*;
 
-use math::Trans;
+use math::*;
 
 // pub use self::array_buffer::ArrayBuffer;
 pub use self::program::Program;
@@ -154,19 +154,20 @@ impl BufferUsage {
 }
 */
 
-pub struct Quad {
+pub struct QuadProgram {
     context: Context,
     program: Program,
     vao: GLuint,
     _vbo: GLuint,
 }
 
-impl Quad {
-    pub fn new(context: &Context) -> Result<Quad, Error> {
+impl QuadProgram {
+    pub fn new(context: &Context) -> Result<QuadProgram, Error> {
         const VERTEX_SHADER: &'static str = r#"
         #version 330 core
 
         uniform mat3 u_trans;
+        uniform mat3 u_tex_trans;
 
         layout (location = 0)
         in vec2 pos;
@@ -178,7 +179,7 @@ impl Quad {
 
         void main() {
             gl_Position = vec4((u_trans * vec3(pos.xy, 1.0)).xy, 0.0, 1.0);
-            v_texcoord = texcoord;
+            v_texcoord = (u_tex_trans * vec3(texcoord, 1.0)).xy;
         }
         "#;
 
@@ -219,12 +220,13 @@ impl Quad {
         use std::mem;
         use std::os::raw::c_void;
 
+        let mut vao = 0;
+        let mut vbo = 0;
+
         unsafe {
-            let mut vao = 0;
             gl::GenVertexArrays(1, &mut vao);
             gl::BindVertexArray(vao);
 
-            let mut vbo = 0;
             gl::GenBuffers(1, &mut vbo);
             gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
             gl::BufferData(gl::ARRAY_BUFFER, (VERTICES.len() * mem::size_of::<f32>()) as GLsizeiptr, VERTICES.as_ptr() as *const c_void, gl::STATIC_DRAW);
@@ -236,24 +238,37 @@ impl Quad {
             gl::EnableVertexAttribArray(1);
 
             gl::BindVertexArray(0);
-
-            Ok(Quad {
-                context: context.clone(),
-                program: program,
-                vao: vao,
-                _vbo: vbo,
-            })
         }
+
+        Ok(QuadProgram {
+            context: context.clone(),
+            program: program,
+            vao: vao,
+            _vbo: vbo,
+        })
     }
 
-    pub fn fill_with_texture(&mut self, window_to_clip_trans: Trans, x: f32, y: f32, w: f32, h: f32, texture: &Texture) {
+    pub fn fill_with_texture(&mut self, window_to_clip_trans: Trans, dst: &Rect, texture: &Texture, src: &Rect) {
         unsafe { gl::Enable(gl::FRAMEBUFFER_SRGB); }
 
         self.program.active();
 
-        let trans = window_to_clip_trans * Trans::offset(x, y) * Trans::scale(w, h);
-        let mat = trans.to_gl_mat3();
-        self.program.set_uniform_matrix3_fv("u_trans", &mat);
+        {
+            let min = dst.min();
+            let size = dst.size();
+            let trans = window_to_clip_trans * Trans::offset(min.x, min.y) * Trans::scale(size.x, size.y);
+            let mat = trans.to_gl_mat3();
+            self.program.set_uniform_matrix3_fv("u_trans", &mat);
+        }
+
+        {
+            let min = src.min();
+            let size = src.size();
+            let tex_size = texture.size();
+            let trans = Trans::scale(1.0 / tex_size.x, 1.0 / tex_size.y ) * Trans::offset(min.x, min.y) * Trans::scale(size.x, size.y);
+            let mat = trans.to_gl_mat3();
+            self.program.set_uniform_matrix3_fv("u_tex_trans", &mat);
+        }
 
         texture.active(0);
         self.context.bind_vertex_array(self.vao);

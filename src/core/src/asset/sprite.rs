@@ -1,7 +1,6 @@
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 
 use super::*;
-use super::image::Image;
 
 use math::*;
 

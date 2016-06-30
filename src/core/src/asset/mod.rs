@@ -9,6 +9,9 @@ use Error;
 
 use typemap::{TypeMap, Key};
 
+pub use self::image::Image;
+pub use self::sprite::Sprite;
+
 pub mod image;
 pub mod sprite;
 
