@@ -41,6 +41,10 @@ impl Renderer {
         })
     }
 
+    pub fn trans(&self) -> &Trans {
+        &self.world_to_window_trans
+    }
+
     pub fn set_trans(&mut self, trans: Trans) {
         self.world_to_window_trans = trans;
     }
