@@ -10,7 +10,7 @@ use Error;
 use typemap::{TypeMap, Key};
 
 pub use self::image::{Image, ImageRef};
-pub use self::sprite::{Sprite, SpriteRef};
+// pub use self::sprite::{Sprite, SpriteRef};
 
 pub mod image;
 pub mod sprite;
@@ -171,9 +171,15 @@ pub struct asset<A: Asset> {
     phantom: PhantomData<A>,
 }
 
+use util::counter::Counter;
+lazy_static! {
+    static ref COUNTER: Counter = Counter::new();
+}
+
 impl<A: Asset> asset<A> {
     pub fn new() -> Slot<A> {
-        unimplemented!()
+        let id = format!("{} {}", A::name(), COUNTER.next());
+        asset::with_id(id.as_str())
     }
 
     pub fn with_id<I: ToAssetId>(id: I) -> Slot<A> {

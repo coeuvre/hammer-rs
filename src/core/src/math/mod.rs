@@ -140,6 +140,11 @@ impl Trans {
         }
     }
 
+    pub fn set_origin(&mut self, x: Scalar, y: Scalar) {
+        self.x = x;
+        self.y = y;
+    }
+
     /// If the given transform cannot be inverted, return the unchanged one.
     pub fn invert(&self) -> Trans {
         let det = self.a * self.d - self.c * self.b;

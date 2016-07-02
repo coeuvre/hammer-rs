@@ -248,7 +248,7 @@ impl QuadProgram {
         })
     }
 
-    pub fn fill_with_texture(&mut self, window_to_clip_trans: Trans, dst: &Rect, texture: &Texture, src: &Rect) {
+    pub fn fill_with_texture(&mut self, trans: Trans, dst: &Rect, texture: &Texture, src: &Rect) {
         unsafe {
             gl::Enable(gl::FRAMEBUFFER_SRGB);
             gl::Enable(gl::BLEND);
@@ -261,7 +261,7 @@ impl QuadProgram {
         {
             let min = dst.min();
             let size = dst.size();
-            let trans = window_to_clip_trans * Trans::offset(min.x, min.y) * Trans::scale(size.x, size.y);
+            let trans = trans * Trans::offset(min.x, min.y) * Trans::scale(size.x, size.y);
             let mat = trans.to_gl_mat3();
             self.program.set_uniform_matrix3_fv("u_trans", &mat);
         }

@@ -19,6 +19,7 @@ pub struct Renderer {
     quad: QuadProgram,
 
     window_to_clip_trans: Trans,
+    world_to_window_trans: Trans,
 
     textures: TextureCache,
 }
@@ -34,8 +35,14 @@ impl Renderer {
             quad: quad,
 
             window_to_clip_trans: Trans::identity(),
+            world_to_window_trans: Trans::identity(),
+
             textures: TextureCache::new(),
         })
+    }
+
+    pub fn set_trans(&mut self, trans: Trans) {
+        self.world_to_window_trans = trans;
     }
 
     pub fn clear(&mut self, r: f32, g: f32, b: f32, a: f32) {
@@ -120,27 +127,27 @@ impl<'a> AsTexture for Image {
     }
 }
 
-impl<'a> AsTexture for Sprite {
-    fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error> {
-        let image = self.image().read();
-        let id = image.id();
-        if !textures.contains_key(&id) {
-            match Texture::new(&context, &*image) {
-                Ok(texture) => {
-                    textures.insert(id, texture);
-                }
-
-                Err(e) => return Err(e),
-            }
-        }
-
-        let texture = textures.get(&id).unwrap();
-        Ok(TextureRef {
-            texture: texture,
-            src: *self.region(),
-        })
-    }
-}
+// impl<'a> AsTexture for Sprite {
+//     fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error> {
+//         let image = self.image().read();
+//         let id = image.id();
+//         if !textures.contains_key(&id) {
+//             match Texture::new(&context, &*image) {
+//                 Ok(texture) => {
+//                     textures.insert(id, texture);
+//                 }
+//
+//                 Err(e) => return Err(e),
+//             }
+//         }
+//
+//         let texture = textures.get(&id).unwrap();
+//         Ok(TextureRef {
+//             texture: texture,
+//             src: *self.region(),
+//         })
+//     }
+// }
 
 impl<A: Asset + AsTexture> AsTexture for AssetRef<A> {
     fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error> {
@@ -176,7 +183,8 @@ pub struct TexturedQuad<'a, 'b, T: 'b> {
 impl<'a, 'b, T: AsTexture + 'b> Drawable for TexturedQuad<'a, 'b, T> {
     fn draw(&mut self) {
         if let Ok(texture) = self.texture.as_texture(&self.renderer.context, &mut self.renderer.textures) {
-            self.renderer.quad.fill_with_texture(self.renderer.window_to_clip_trans, &self.dst, texture.texture, &texture.src);
+            let trans = self.renderer.window_to_clip_trans * self.renderer.world_to_window_trans;
+            self.renderer.quad.fill_with_texture(trans, &self.dst, texture.texture, &texture.src);
         }
     }
 }
