@@ -1,8 +1,9 @@
 use std::ops::{Add, Sub, Mul};
 
+pub type Transform = Trans;
 pub type Scalar = f32;
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, Default, Debug, PartialEq)]
 pub struct Vec2 {
     pub x: Scalar,
     pub y: Scalar,
@@ -32,7 +33,7 @@ impl Sub for Vec2 {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, Default, PartialEq)]
 pub struct Rect {
     min: Vec2,
     max: Vec2,
@@ -78,7 +79,7 @@ impl Rect {
 ///     | b d y | * | y |
 ///     | 0 0 1 |   | 1 |
 ///
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, Default, PartialEq)]
 pub struct Trans {
     a: Scalar,
     b: Scalar,
@@ -133,14 +134,11 @@ impl Trans {
         }
     }
 
-    pub fn origin(&self) -> Vec2 {
-        Vec2 {
-            x: self.x,
-            y: self.y,
-        }
+    pub fn get_position(&self) -> Vec2 {
+        vec2(self.x, self.y)
     }
 
-    pub fn set_origin(&mut self, x: Scalar, y: Scalar) {
+    pub fn set_position(&mut self, x: Scalar, y: Scalar) {
         self.x = x;
         self.y = y;
     }

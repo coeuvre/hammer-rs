@@ -173,7 +173,7 @@ pub struct asset<A: Asset> {
 
 use util::counter::Counter;
 lazy_static! {
-    static ref COUNTER: Counter = Counter::new();
+    static ref COUNTER: Counter<usize> = Counter::new();
 }
 
 impl<A: Asset> asset<A> {

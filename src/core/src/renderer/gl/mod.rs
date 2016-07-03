@@ -12,7 +12,7 @@ use math::*;
 
 pub mod wrapper;
 
-pub type TextureCache = HashMap<u64, Texture>;
+pub type TextureCache = HashMap<usize, Texture>;
 
 pub struct Renderer {
     context: Context,

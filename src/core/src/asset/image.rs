@@ -12,20 +12,20 @@ use util::cstr_to_string;
 use util::counter::Counter;
 
 lazy_static! {
-    static ref COUNTER: Counter = Counter::new();
+    static ref COUNTER: Counter<usize> = Counter::new();
 }
 
 pub type ImageRef = AssetRef<Image>;
 
 pub struct Image {
-    id: u64,
+    id: usize,
     w: i32,
     h: i32,
     data: Vec<u8>,
 }
 
 impl Image {
-    pub fn id(&self) -> u64 {
+    pub fn id(&self) -> usize {
         self.id
     }
 
