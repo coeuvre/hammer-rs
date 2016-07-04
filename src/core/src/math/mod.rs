@@ -1,74 +1,79 @@
-use std::ops::{Add, Sub, Mul};
+use std::ops::{Add, Sub, Mul, Div};
 
 pub type Transform = Trans;
-pub type Vector = Vec2;
+pub type Vec2 = Vector;
 pub type Scalar = f32;
 
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
-pub struct Vec2 {
+pub struct Vector {
     pub x: Scalar,
     pub y: Scalar,
 }
 
 #[inline(always)]
-pub fn v(x: Scalar, y: Scalar) -> Vec2 {
+pub fn vector(x: Scalar, y: Scalar) -> Vector {
     Vector { x: x, y: y }
 }
 
 #[inline(always)]
-pub fn vec2(x: Scalar, y: Scalar) -> Vec2 {
-    Vec2 {
-        x: x,
-        y: y,
+pub fn vec2(x: Scalar, y: Scalar) -> Vector {
+    Vector { x: x, y: y }
+}
+
+impl Add for Vector {
+    type Output = Vector;
+
+    fn add(self, rhs: Vector) -> Vector {
+        vector(self.x + rhs.x, self.y + rhs.y)
     }
 }
 
-impl Add for Vec2 {
-    type Output = Vec2;
+impl Sub for Vector {
+    type Output = Vector;
 
-    fn add(self, rhs: Vec2) -> Vec2 {
-        vec2(self.x + rhs.x, self.y + rhs.y)
+    fn sub(self, rhs: Vector) -> Vector {
+        vector(self.x - rhs.x, self.y - rhs.y)
     }
 }
 
-impl Sub for Vec2 {
-    type Output = Vec2;
+impl Div<Scalar> for Vector {
+    type Output = Vector;
 
-    fn sub(self, rhs: Vec2) -> Vec2 {
-        vec2(self.x - rhs.x, self.y - rhs.y)
+    fn div(self, rhs: Scalar) -> Vector {
+        vector(self.x / rhs, self.y / rhs)
     }
 }
 
 #[derive(Copy, Clone, Default, PartialEq)]
 pub struct Rect {
-    min: Vec2,
-    max: Vec2,
+    min: Vector,
+    max: Vector,
 }
 
 impl Rect {
-    pub fn with_min_max(min: Vec2, max: Vec2) -> Rect {
+    pub fn with_min_max(min: Vector, max: Vector) -> Rect {
         Rect {
             min: min,
             max: max,
         }
     }
 
-    pub fn with_min_size(min: Vec2, size: Vec2) -> Rect {
+    pub fn with_min_size(min: Vector, size: Vector) -> Rect {
         Rect {
             min: min,
             max: min + size,
         }
     }
 
-    pub fn min(&self) -> &Vec2 {
+    pub fn min(&self) -> &Vector {
         &self.min
     }
 
-    pub fn max(&self) -> &Vec2 {
+    pub fn max(&self) -> &Vector {
         &self.max
     }
 
-    pub fn size(&self) -> Vec2 {
+    pub fn size(&self) -> Vector {
         self.max - self.min
     }
 }
@@ -126,22 +131,22 @@ impl Trans {
         }
     }
 
-    pub fn xaxis(&self) -> Vec2 {
-        Vec2 {
+    pub fn xaxis(&self) -> Vector {
+        Vector {
             x: self.a,
             y: self.b,
         }
     }
 
-    pub fn yaxis(&self) -> Vec2 {
-        Vec2 {
+    pub fn yaxis(&self) -> Vector {
+        Vector {
             x: self.c,
             y: self.d,
         }
     }
 
-    pub fn get_position(&self) -> Vec2 {
-        vec2(self.x, self.y)
+    pub fn get_position(&self) -> Vector {
+        vector(self.x, self.y)
     }
 
     pub fn set_position(&mut self, x: Scalar, y: Scalar) {
@@ -194,11 +199,11 @@ impl Mul for Trans {
     }
 }
 
-impl Mul<Vec2> for Trans {
-    type Output = Vec2;
+impl Mul<Vector> for Trans {
+    type Output = Vector;
 
-    fn mul(self, rhs: Vec2) -> Vec2 {
-        Vec2 {
+    fn mul(self, rhs: Vector) -> Vector {
+        Vector {
             x: rhs.x * self.a + rhs.y * self.c + self.x,
             y: rhs.x * self.b + rhs.y * self.d + self.y,
         }

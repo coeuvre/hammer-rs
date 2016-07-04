@@ -22,7 +22,13 @@ pub type Error = Box<std::error::Error + Send + Sync>;
 use scene::*;
 use ecs::*;
 
-pub fn run(mut scene: Scene) {
+use std::collections::HashSet;
+
+pub fn run(scene: Scene) {
+    let mut started_scene: HashSet<String> = HashSet::new();
+
+    scene::push(scene);
+
     let mut window = window::WindowBuilder::new().size(800, 600).build().unwrap();
     window.show();
 
@@ -30,8 +36,6 @@ pub fn run(mut scene: Scene) {
     let mut render_system = RenderSystem::new(renderer);
 
     let mut behaviour_system = BehaviourSystem {};
-
-    behaviour_system.start(&mut scene);
 
     'game_loop: loop {
         for event in window.poll_events() {
@@ -41,8 +45,17 @@ pub fn run(mut scene: Scene) {
             }
         }
 
-        behaviour_system.update(&mut scene);
+        if let Some(scene) = scene::top() {
+            let mut scene = scene.write();
 
-        render_system.process(&mut scene);
+            if !started_scene.contains(scene.id()) {
+                behaviour_system.start(&mut scene);
+                started_scene.insert(scene.id().to_string());
+            }
+
+            behaviour_system.update(&mut scene);
+
+            render_system.process(&mut scene);
+        }
     }
 }
