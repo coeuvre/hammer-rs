@@ -11,7 +11,7 @@ use scene::*;
 
 use util::counter::Counter;
 
-use self::component::{Component, ComponentRef};
+use self::component::{Component, ComponentRef, BehaviourDelegate};
 use self::component::sprite::Sprite;
 
 pub mod component;
@@ -100,18 +100,55 @@ impl Entity {
 
     pub fn add_component<C: Component>(&self, component: C) {
         if let Some(entity) = self.get_ref() {
-            entity.write().add_component(component);
+            entity.add_component(component);
         }
     }
 
-    pub fn add_child(&mut self, child: Entity) {
+    pub fn add_child(&self, child: Entity) {
         if let Some(parent) = self.get_ref() {
-            parent.write().add_child(child);
+            parent.add_child(child);
         }
     }
 
     pub fn component<C: Component>(&self) -> Option<ComponentRef<C>> {
-        self.get_ref().and_then(|entity| entity.read().component::<C>())
+        self.get_ref().and_then(|entity| entity.component::<C>())
+    }
+}
+
+#[derive(Clone)]
+pub struct EntityRef {
+    storage: Rc<RefCell<EntityStorage>>,
+}
+
+impl EntityRef {
+    fn new(storage: EntityStorage) -> EntityRef {
+        EntityRef {
+            storage: Rc::new(RefCell::new(storage)),
+        }
+    }
+
+    pub fn read(&self) -> Ref<EntityStorage> {
+        self.storage.borrow()
+    }
+
+    pub fn write(&self) -> RefMut<EntityStorage> {
+        self.storage.borrow_mut()
+    }
+
+    pub fn add_component<C: Component>(&self, component: C) {
+        self.write().add_component(component);
+    }
+
+    pub fn add_child(&self, child: Entity) {
+        self.write().add_child(child);
+    }
+
+    pub fn component<C: Component>(&self) -> Option<ComponentRef<C>> {
+        self.read().component::<C>()
+    }
+
+    pub fn children(&self) -> Vec<Entity> {
+        self.read().children().to_vec()
     }
 }
 
@@ -165,27 +202,6 @@ impl<C: Component> Key for ComponentTypeMapKey<C> {
     type Value = ComponentRef<C>;
 }
 
-#[derive(Clone)]
-pub struct EntityRef {
-    storage: Rc<RefCell<EntityStorage>>,
-}
-
-impl EntityRef {
-    fn new(storage: EntityStorage) -> EntityRef {
-        EntityRef {
-            storage: Rc::new(RefCell::new(storage)),
-        }
-    }
-
-    pub fn read(&self) -> Ref<EntityStorage> {
-        self.storage.borrow()
-    }
-
-    pub fn write(&self) -> RefMut<EntityStorage> {
-        self.storage.borrow_mut()
-    }
-}
-
 struct World {
     entities: RefCell<HashMap<Entity, EntityRef>>,
 }
@@ -205,5 +221,41 @@ impl World {
     pub fn entity_ref(&self, entity: &Entity) -> Option<EntityRef> {
         let entities = self.entities.borrow();
         entities.get(entity).cloned()
+    }
+}
+
+pub struct BehaviourSystem {}
+
+impl BehaviourSystem {
+    fn start_entity(&mut self, entity: Entity) {
+        if let Some(entity) = entity.get_ref() {
+            if let Some(behaviour_delegate) = entity.component::<BehaviourDelegate>() {
+                behaviour_delegate.write().start(&entity);
+            }
+
+            for child in entity.children() {
+                self.start_entity(child);
+            }
+        }
+    }
+
+    fn update_entity(&mut self, entity: Entity) {
+        if let Some(entity) = entity.get_ref() {
+            if let Some(behaviour_delegate) = entity.component::<BehaviourDelegate>() {
+                behaviour_delegate.write().update(&entity);
+            }
+
+            for child in entity.children() {
+                self.update_entity(child);
+            }
+        }
+    }
+
+    pub fn start(&mut self, scene: &mut Scene) {
+        self.start_entity(scene.root());
+    }
+
+    pub fn update(&mut self, scene: &mut Scene) {
+        self.update_entity(scene.root());
     }
 }

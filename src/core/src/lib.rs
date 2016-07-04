@@ -29,6 +29,10 @@ pub fn run(mut scene: Scene) {
     let renderer = renderer::Renderer::new(&window).unwrap();
     let mut render_system = RenderSystem::new(renderer);
 
+    let mut behaviour_system = BehaviourSystem {};
+
+    behaviour_system.start(&mut scene);
+
     'game_loop: loop {
         for event in window.poll_events() {
             match event {
@@ -36,6 +40,8 @@ pub fn run(mut scene: Scene) {
                 _ => {}
             }
         }
+
+        behaviour_system.update(&mut scene);
 
         render_system.process(&mut scene);
     }
