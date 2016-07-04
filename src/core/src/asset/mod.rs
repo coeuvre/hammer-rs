@@ -1,4 +1,3 @@
-use std::mem;
 use std::any::Any;
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -12,18 +11,6 @@ use typemap::{TypeMap, Key};
 pub use self::image::{Image, ImageRef};
 
 pub mod image;
-
-pub type AssetId = String;
-
-pub trait ToAssetId {
-    fn to_asset_id(&self) -> AssetId;
-}
-
-impl<'a> ToAssetId for &'a str {
-    fn to_asset_id(&self) -> AssetId {
-        ::std::string::ToString::to_string(self)
-    }
-}
 
 pub trait Asset: Any + Send + Sync {
     fn name() -> &'static str;
@@ -59,13 +46,13 @@ impl<A: Asset> AssetRef<A> {
     }
 }
 
-pub struct Slot<A: Asset> {
-    id: AssetId,
+struct Slot<A: Asset> {
+    id: String,
     asset: Arc<RwLock<SlotState<A>>>,
 }
 
 impl<A: Asset> Slot<A> {
-    fn new(id: AssetId) -> Slot<A> {
+    fn new(id: String) -> Slot<A> {
         Slot {
             id: id,
             asset: Arc::new(RwLock::new(SlotState::Unloaded)),
@@ -80,47 +67,41 @@ impl<A: Asset> Slot<A> {
                     return Err(format!("Asset {} is loading.", self).into());
                 }
 
-                _ => {
-                    *asset = SlotState::Loading;
+                SlotState::Loaded(ref asset) => {
+                    return Ok(asset.clone());
                 }
+
+                _ => {}
             }
+
+            *asset = SlotState::Loading;
         }
 
-        let src_string = src.to_string();
         let result = src.load();
 
-        let mut asset = self.asset.write().unwrap();
+        {
+            let mut asset = self.asset.write().unwrap();
 
-        match *asset {
-            SlotState::Loading => {
-                match result {
-                    Ok(a) => {
-                        let asset_ref = AssetRef { asset: Arc::new(RwLock::new(a)) };
-                        *asset = SlotState::Loaded(asset_ref.clone());
-                        info!("Loaded {} from {}.", self, src_string);
-                        Ok(asset_ref)
-                    }
+            match *asset {
+                SlotState::Loading => {
+                    match result {
+                        Ok(a) => {
+                            let asset_ref = AssetRef { asset: Arc::new(RwLock::new(a)) };
+                            *asset = SlotState::Loaded(asset_ref.clone());
+                            info!("Loaded {}", self);
+                            Ok(asset_ref)
+                        }
 
-                    Err(e) => {
-                        let err = Err(format!("{}", e).into());
-                        *asset = SlotState::LoadError(e);
-                        err
+                        Err(e) => {
+                            let err = Err(format!("{}", e).into());
+                            *asset = SlotState::LoadError(e);
+                            err
+                        }
                     }
                 }
+
+                _ => Err("Loading interupted".into()),
             }
-
-            _ => Err("Loading interupted".into()),
-        }
-    }
-
-    pub fn id(&self) -> &AssetId {
-        &self.id
-    }
-
-    pub fn loaded(&self) -> bool {
-        match *self.asset.read().unwrap() {
-            SlotState::Loaded(_) => true,
-            _ => false,
         }
     }
 
@@ -132,6 +113,14 @@ impl<A: Asset> Slot<A> {
             }
 
             _ => None,
+        }
+    }
+
+    /*
+    pub fn loaded(&self) -> bool {
+        match *self.asset.read().unwrap() {
+            SlotState::Loaded(_) => true,
+            _ => false,
         }
     }
 
@@ -147,6 +136,7 @@ impl<A: Asset> Slot<A> {
             _ => None,
         }
     }
+    */
 }
 
 impl<A: Asset> Clone for Slot<A> {
@@ -160,7 +150,7 @@ impl<A: Asset> Clone for Slot<A> {
 
 impl<A: Asset> fmt::Display for Slot<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}({})", A::name(), self.id())
+        write!(f, "{}({})", A::name(), self.id)
     }
 }
 
@@ -169,25 +159,14 @@ pub struct asset<A: Asset> {
     phantom: PhantomData<A>,
 }
 
-use util::counter::Counter;
-lazy_static! {
-    static ref COUNTER: Counter<usize> = Counter::new();
-}
-
 impl<A: Asset> asset<A> {
-    pub fn new() -> Slot<A> {
-        let id = format!("{} {}", A::name(), COUNTER.next());
-        asset::with_id(id.as_str())
+    pub fn load<S: Source<A>>(src: S) -> Result<AssetRef<A>, Error> {
+        let id = src.to_string();
+        ASSETS.slots.acquire::<A>(&id).load(src)
     }
 
-    pub fn with_id<I: ToAssetId>(id: I) -> Slot<A> {
-        let id = id.to_asset_id();
-        ASSETS.slots.acquire::<A>(id)
-    }
-
-    pub fn get<I: ToAssetId>(id: I) -> Option<Slot<A>> {
-        let id = id.to_asset_id();
-        ASSETS.slots.get::<A>(&id)
+    pub fn get(id: &str) -> Option<AssetRef<A>> {
+        ASSETS.slots.get::<A>(id).and_then(|slot| slot.get())
     }
 }
 
@@ -218,23 +197,23 @@ impl Slots {
         }
     }
 
-    fn get<A: Asset>(&self, id: &AssetId) -> Option<Slot<A>> {
+    fn get<A: Asset>(&self, id: &str) -> Option<Slot<A>> {
         let mut type_slots = self.slots.lock().unwrap();
         let slots = type_slots.entry::<AssetTypeMapKey<A>>().or_insert_with(|| HashMap::new());
         slots.get(id).cloned()
     }
 
-    fn acquire<A: Asset>(&self, id: AssetId) -> Slot<A> {
+    fn acquire<A: Asset>(&self, id: &str) -> Slot<A> {
         let mut type_slots = self.slots.lock().unwrap();
         let slots = type_slots.entry::<AssetTypeMapKey<A>>().or_insert_with(|| HashMap::new());
 
-        if let Some(asset) = slots.get(&id) {
+        if let Some(asset) = slots.get(id) {
             return asset.clone();
         }
 
-        let handle = Slot::new(id.clone());
+        let handle = Slot::new(id.to_string());
 
-        slots.insert(id, handle.clone());
+        slots.insert(id.to_string(), handle.clone());
 
         handle
     }
@@ -248,5 +227,5 @@ struct AssetTypeMapKey<A> {
 }
 
 impl<A: Asset> Key for AssetTypeMapKey<A> {
-    type Value = HashMap<AssetId, Slot<A>>;
+    type Value = HashMap<String, Slot<A>>;
 }

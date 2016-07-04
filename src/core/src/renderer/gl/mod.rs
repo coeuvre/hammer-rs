@@ -159,15 +159,6 @@ impl<A: Asset + AsTexture> AsTexture for AssetRef<A> {
     }
 }
 
-impl<A: Asset> AsTexture for Slot<A> where AssetRef<A>: AsTexture {
-    fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error> {
-        match self.get() {
-            Some(asset) => asset.as_texture(context, textures),
-            None => Err(format!("Failed to read {}", self).into()),
-        }
-    }
-}
-
 impl<'a> Quad<'a> {
     pub fn texture<'b, T: AsTexture + 'b>(self, texture: &'b T) -> TexturedQuad<'a, 'b, T> {
         TexturedQuad {

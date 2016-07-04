@@ -14,8 +14,13 @@ impl Component for Sprite {}
 
 impl Sprite {
     pub fn new(path: &str) -> Sprite {
-        let image = asset::<Image>::new().load(path).unwrap();
-        Sprite::with_image(image)
+        let image = asset::<Image>::load(path).ok();
+        let (w, h) = image.as_ref().map(|image| image.read().size()).unwrap_or((0, 0));
+        Sprite {
+            image: image,
+            region: Rect::with_min_size(vector(0.0, 0.0), vector(w as f32, h as f32)),
+            anchor: vector(0.0, 0.0),
+        }
     }
 
     pub fn with_image(image: ImageRef) -> Sprite {
