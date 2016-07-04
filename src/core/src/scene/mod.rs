@@ -13,11 +13,17 @@ impl Scene {
         }
     }
 
-    pub fn get_root(&self) -> Entity {
+    pub fn id(&self) -> &str {
+        self.id.as_str()
+    }
+
+    pub fn root(&self) -> Entity {
         self.root
     }
 
     pub fn add_entity(&mut self, entity: Entity) {
-        self.root.add_child(entity);
+        if let Some(root) = self.root.get_ref() {
+            root.write().add_child(entity);
+        }
     }
 }

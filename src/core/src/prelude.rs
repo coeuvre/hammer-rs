@@ -5,3 +5,4 @@ pub use asset::*;
 pub use scene::*;
 pub use input::*;
 pub use ecs::*;
+pub use ecs::component::*;

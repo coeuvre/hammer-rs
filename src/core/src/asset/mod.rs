@@ -10,10 +10,8 @@ use Error;
 use typemap::{TypeMap, Key};
 
 pub use self::image::{Image, ImageRef};
-// pub use self::sprite::{Sprite, SpriteRef};
 
 pub mod image;
-pub mod sprite;
 
 pub type AssetId = String;
 

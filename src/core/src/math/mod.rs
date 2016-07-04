@@ -1,12 +1,18 @@
 use std::ops::{Add, Sub, Mul};
 
 pub type Transform = Trans;
+pub type Vector = Vec2;
 pub type Scalar = f32;
 
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
 pub struct Vec2 {
     pub x: Scalar,
     pub y: Scalar,
+}
+
+#[inline(always)]
+pub fn v(x: Scalar, y: Scalar) -> Vec2 {
+    Vector { x: x, y: y }
 }
 
 #[inline(always)]
