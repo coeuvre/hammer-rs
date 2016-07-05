@@ -13,7 +13,7 @@ use math::*;
 pub struct Texture {
     context: Context,
     id: GLuint,
-    size: Vec2,
+    size: Vector,
 }
 
 impl Texture {
@@ -22,7 +22,7 @@ impl Texture {
 
         let (w, h) = image.size();
         let data = image.data();
-        let size = vec2(w as f32, h as f32);
+        let size = vector(w as f32, h as f32);
 
         unsafe {
             gl::GenTextures(1, &mut id);
@@ -53,7 +53,7 @@ impl Texture {
         self.context.bind_texture_2d(self.id);
     }
 
-    pub fn size(&self) -> Vec2 {
+    pub fn size(&self) -> Vector {
         self.size
     }
 }

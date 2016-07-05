@@ -5,7 +5,6 @@ use Error;
 use window::Window;
 
 use self::wrapper::*;
-use super::Drawable;
 
 use asset::*;
 use math::*;
@@ -18,8 +17,8 @@ pub struct Renderer {
     context: Context,
     quad: QuadProgram,
 
-    window_to_clip_trans: Trans,
-    world_to_window_trans: Trans,
+    projection: Transform,
+    world_to_window_trans: Transform,
 
     textures: TextureCache,
 }
@@ -34,18 +33,18 @@ impl Renderer {
             context: context,
             quad: quad,
 
-            window_to_clip_trans: Trans::identity(),
-            world_to_window_trans: Trans::identity(),
+            projection: Transform::identity(),
+            world_to_window_trans: Transform::identity(),
 
             textures: TextureCache::new(),
         })
     }
 
-    pub fn trans(&self) -> &Trans {
+    pub fn transform(&self) -> &Transform {
         &self.world_to_window_trans
     }
 
-    pub fn set_trans(&mut self, trans: Trans) {
+    pub fn set_transform(&mut self, trans: Transform) {
         self.world_to_window_trans = trans;
     }
 
@@ -62,6 +61,13 @@ impl Renderer {
         self.context.swap_buffers();
     }
 
+    pub fn fill_with_texture<T: AsTexture>(&mut self, dst: &Rect, texture: &T) {
+        if let Ok(texture) = texture.as_texture(&self.context, &mut self.textures) {
+            let trans = self.projection * self.world_to_window_trans;
+            self.quad.fill_with_texture(trans, dst, texture.texture, &texture.src);
+        }
+    }
+
 /*
     fn prepare(&mut self) {
         unsafe {
@@ -73,31 +79,9 @@ impl Renderer {
     }
 */
 
-    pub fn ortho(&mut self, left: f32, right: f32, bottom: f32, top: f32) {
-        // x -> (left, right)
-        // x - left -> (0, right - left)
-        // (x - left) / (right - left) * 2 - 1  -> (-1, 1)
-        //
-        // y -> (bottom, top)
-        // y - bottom -> (0, top - bottom)
-        // (y - bottom) / (top - bottom) * 2 - 1 -> (-1, 1)
-        //
-        let trans = Trans::offset(-left, - bottom);
-        let trans = Trans::scale(2.0 / (right - left), 2.0 / (top - bottom)) * trans;
-        self.window_to_clip_trans = Trans::offset(-1.0, -1.0) * trans;
+    pub fn set_projection(&mut self, trans: Transform) {
+        self.projection = trans;
     }
-
-    pub fn rect(&mut self, rect: Rect) -> Quad {
-        Quad {
-            renderer: self,
-            rect: rect,
-        }
-    }
-}
-
-pub struct Quad<'a> {
-    renderer: &'a mut Renderer,
-    rect: Rect,
 }
 
 pub struct TextureRef<'a> {
@@ -126,7 +110,7 @@ impl<'a> AsTexture for Image {
         let size = texture.size();
         Ok(TextureRef {
             texture: texture,
-            src: Rect::with_min_size(vec2(0.0, 0.0), size)
+            src: Rect::with_min_size(vector(0.0, 0.0), size)
         })
     }
 }
@@ -156,30 +140,5 @@ impl<'a> AsTexture for Image {
 impl<A: Asset + AsTexture> AsTexture for AssetRef<A> {
     fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error> {
         self.read().as_texture(context, textures)
-    }
-}
-
-impl<'a> Quad<'a> {
-    pub fn texture<'b, T: AsTexture + 'b>(self, texture: &'b T) -> TexturedQuad<'a, 'b, T> {
-        TexturedQuad {
-            renderer: self.renderer,
-            texture: texture,
-            dst: self.rect,
-        }
-    }
-}
-
-pub struct TexturedQuad<'a, 'b, T: 'b> {
-    renderer: &'a mut Renderer,
-    texture: &'b T,
-    dst: Rect,
-}
-
-impl<'a, 'b, T: AsTexture + 'b> Drawable for TexturedQuad<'a, 'b, T> {
-    fn draw(&mut self) {
-        if let Ok(texture) = self.texture.as_texture(&self.renderer.context, &mut self.renderer.textures) {
-            let trans = self.renderer.window_to_clip_trans * self.renderer.world_to_window_trans;
-            self.renderer.quad.fill_with_texture(trans, &self.dst, texture.texture, &texture.src);
-        }
     }
 }

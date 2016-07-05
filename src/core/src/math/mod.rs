@@ -1,7 +1,5 @@
 use std::ops::{Add, Sub, Mul, Div};
 
-pub type Transform = Trans;
-pub type Vec2 = Vector;
 pub type Scalar = f32;
 
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
@@ -10,13 +8,14 @@ pub struct Vector {
     pub y: Scalar,
 }
 
-#[inline(always)]
-pub fn vector(x: Scalar, y: Scalar) -> Vector {
-    Vector { x: x, y: y }
+impl Vector {
+    pub fn zero() -> Vector {
+        Vector { x: 0.0, y: 0.0 }
+    }
 }
 
 #[inline(always)]
-pub fn vec2(x: Scalar, y: Scalar) -> Vector {
+pub fn vector(x: Scalar, y: Scalar) -> Vector {
     Vector { x: x, y: y }
 }
 
@@ -91,7 +90,7 @@ impl Rect {
 ///     | 0 0 1 |   | 1 |
 ///
 #[derive(Copy, Clone, Default, PartialEq)]
-pub struct Trans {
+pub struct Transform {
     a: Scalar,
     b: Scalar,
     c: Scalar,
@@ -100,35 +99,49 @@ pub struct Trans {
     y: Scalar,
 }
 
-impl Trans {
-    pub fn identity() -> Trans {
-        Trans {
+impl Transform {
+    pub fn identity() -> Transform {
+        Transform {
             a: 1.0, c: 0.0, x: 0.0,
             b: 0.0, d: 1.0, y: 0.0,
         }
     }
 
-    pub fn offset(x: Scalar, y: Scalar) -> Trans {
-        Trans {
+    pub fn offset(x: Scalar, y: Scalar) -> Transform {
+        Transform {
             a: 1.0, c: 0.0, x: x,
             b: 0.0, d: 1.0, y: y,
         }
     }
 
-    pub fn scale(sx: Scalar, sy: Scalar) -> Trans {
-        Trans {
+    pub fn scale(sx: Scalar, sy: Scalar) -> Transform {
+        Transform {
             a:  sx, c: 0.0, x: 0.0,
             b: 0.0, d:  sy, y: 0.0,
         }
     }
 
-    pub fn rotate(rad: Scalar) -> Trans {
+    pub fn rotate(rad: Scalar) -> Transform {
         let cos = rad.cos();
         let sin = rad.sin();
-        Trans {
+        Transform {
             a: cos, c: -sin, x: 0.0,
             b: sin, d:  cos, y: 0.0,
         }
+    }
+
+    pub fn ortho(left: Scalar, right: Scalar, bottom: Scalar, top: Scalar) -> Transform {
+        // x -> (left, right)
+        // x - left -> (0, right - left)
+        // (x - left) / (right - left) * 2 - 1  -> (-1, 1)
+        //
+        // y -> (bottom, top)
+        // y - bottom -> (0, top - bottom)
+        // (y - bottom) / (top - bottom) * 2 - 1 -> (-1, 1)
+        //
+        let trans = Transform::offset(-left, - bottom);
+        let trans = Transform::scale(2.0 / (right - left), 2.0 / (top - bottom)) * trans;
+        Transform::offset(-1.0, -1.0) * trans
     }
 
     pub fn xaxis(&self) -> Vector {
@@ -155,7 +168,7 @@ impl Trans {
     }
 
     /// If the given transform cannot be inverted, return the unchanged one.
-    pub fn invert(&self) -> Trans {
+    pub fn invert(&self) -> Transform {
         let det = self.a * self.d - self.c * self.b;
 
         if det == 0.0 {
@@ -163,7 +176,7 @@ impl Trans {
         } else {
             let inv_det = 1.0 / det;
 
-            Trans {
+            Transform {
                 a: inv_det * self.d,
                 c: inv_det * -self.c,
                 x: inv_det * (self.c * self.y - self.x * self.d),
@@ -183,11 +196,11 @@ impl Trans {
     }
 }
 
-impl Mul for Trans {
-    type Output = Trans;
+impl Mul for Transform {
+    type Output = Transform;
 
-    fn mul(self, rhs: Trans) -> Trans {
-        Trans {
+    fn mul(self, rhs: Transform) -> Transform {
+        Transform {
             a: self.a * rhs.a + self.c * rhs.b,
             c: self.a * rhs.c + self.c * rhs.d,
             x: self.a * rhs.x + self.c * rhs.y + self.x,
@@ -199,7 +212,7 @@ impl Mul for Trans {
     }
 }
 
-impl Mul<Vector> for Trans {
+impl Mul<Vector> for Transform {
     type Output = Vector;
 
     fn mul(self, rhs: Vector) -> Vector {

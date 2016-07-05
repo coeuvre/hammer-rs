@@ -27,8 +27,8 @@ impl Sprite {
         let (w, h) = image.read().size();
         Sprite {
             image: Some(image),
-            region: Rect::with_min_size(vector(0.0, 0.0), vector(w as f32, h as f32)),
-            anchor: vector(0.0, 0.0),
+            region: Rect::with_min_size(Vector::zero(), vector(w as f32, h as f32)),
+            anchor: Vector::zero(),
         }
     }
 
@@ -48,11 +48,11 @@ impl Sprite {
         self.region = region
     }
 
-    pub fn anchor(&self) -> &Vec2 {
+    pub fn anchor(&self) -> &Vector {
         &self.anchor
     }
 
     pub fn set_anchor(&mut self, x: Scalar, y: Scalar) {
-        self.anchor = vec2(x, y);
+        self.anchor = vector(x, y);
     }
 }

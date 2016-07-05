@@ -6,8 +6,7 @@ use std::rc::Rc;
 use typemap::{TypeMap, Key};
 
 use math::*;
-use renderer::*;
-use scene::*;
+use renderer::{self, Drawable};
 
 use util::counter::Counter;
 
@@ -21,61 +20,22 @@ thread_local!(static WORLD: World = World::new());
 thread_local!(static COUNTER: Counter<usize> = Counter::new());
 
 pub trait System {
-    fn process(&mut self, scene: &mut Scene);
+    fn start(&mut self, _entity: &EntityRef) {}
+    fn update(&mut self, _entity: &EntityRef) {}
 }
 
-pub struct RenderSystem {
-    renderer: Renderer,
-}
-
-impl RenderSystem {
-    pub fn new(renderer: Renderer) -> RenderSystem {
-        RenderSystem {
-            renderer: renderer,
-        }
-    }
-
-    fn process_entity(&mut self, entity: Entity) {
-        if let Some(entity) = entity.get_ref() {
-            let entity = entity.read();
-
-            let mut orig_trans = None;
-
-            if let Some(trans) = entity.component::<Transform>() {
-                orig_trans = Some(*self.renderer.trans());
-                self.renderer.set_trans(*trans.read() * orig_trans.unwrap());
-            }
-
-            if let Some(sprite) = entity.component::<Sprite>() {
-                let sprite = sprite.read();
-                if let Some(image) = sprite.image() {
-                    self.renderer.rect(Rect::with_min_size(vec2(0.0, 0.0), sprite.region().size())).texture(image).draw();
-                }
-            }
-
-            for child in entity.children() {
-                self.process_entity(*child);
-            }
-
-            if let Some(orig_trans) = orig_trans {
-                self.renderer.set_trans(orig_trans);
-            }
-        }
-    }
-}
+pub struct RenderSystem {}
 
 impl System for RenderSystem {
-    fn process(&mut self, scene: &mut Scene) {
-        let view_w = 640.0;
-        let view_h = 480.0;
-
-        self.renderer.ortho(0.0, view_w, 0.0, view_h);
-
-        self.renderer.clear(0.0, 0.0, 0.0, 1.0);
-
-        self.process_entity(scene.root());
-
-        self.renderer.present();
+    fn update(&mut self, entity: &EntityRef) {
+        if let Some(sprite) = entity.component::<Sprite>() {
+            let trans = entity.transform_to_world();
+            renderer::set_transform(trans);
+            let sprite = sprite.read();
+            if let Some(image) = sprite.image() {
+                renderer::rect(Rect::with_min_size(vector(0.0, 0.0), sprite.region().size())).texture(image).draw();
+            }
+        }
     }
 }
 
@@ -89,7 +49,7 @@ impl Entity {
 
     pub fn with_id(id: String) -> Entity {
         let entity = Entity(COUNTER.with(|counter| counter.next()));
-        let storage = EntityStorage::new(id);
+        let storage = EntityStorage::new(entity, id);
         WORLD.with(|world| world.insert_entity(entity, storage));
         entity
     }
@@ -110,8 +70,16 @@ impl Entity {
         }
     }
 
+    pub fn parent(&self) -> Option<Entity> {
+        self.get_ref().and_then(|entity| entity.parent())
+    }
+
     pub fn component<C: Component>(&self) -> Option<ComponentRef<C>> {
         self.get_ref().and_then(|entity| entity.component::<C>())
+    }
+
+    pub fn transform_to_world(&self) -> Transform {
+        self.get_ref().map(|entity| entity.transform_to_world()).unwrap_or(Transform::identity())
     }
 }
 
@@ -147,12 +115,23 @@ impl EntityRef {
         self.read().component::<C>()
     }
 
+    pub fn parent(&self) -> Option<Entity> {
+        self.read().parent()
+    }
+
     pub fn children(&self) -> Vec<Entity> {
         self.read().children().to_vec()
+    }
+
+    pub fn transform_to_world(&self) -> Transform {
+        let transform = self.component::<Transform>().map(|transform| *transform.read()).unwrap_or(Transform::identity());
+        let parent = self.parent().map(|parent| parent.transform_to_world());
+        parent.map(|parent| transform * parent).unwrap_or(transform)
     }
 }
 
 pub struct EntityStorage {
+    entity: Entity,
     id: String,
     parent: Option<Entity>,
     children: Vec<Entity>,
@@ -160,8 +139,9 @@ pub struct EntityStorage {
 }
 
 impl EntityStorage {
-    pub fn new(id: String) -> EntityStorage {
+    pub fn new(entity: Entity, id: String) -> EntityStorage {
         EntityStorage {
+            entity: entity,
             id: id,
             parent: None,
             children: Vec::new(),
@@ -170,7 +150,10 @@ impl EntityStorage {
     }
 
     pub fn add_child(&mut self, entity: Entity) {
-        self.children.push(entity);
+        if let Some(entity_ref) = entity.get_ref() {
+            entity_ref.write().parent = Some(self.entity);
+            self.children.push(entity);
+        }
     }
 
     pub fn add_component<C: Component>(&mut self, component: C) {
@@ -226,36 +209,16 @@ impl World {
 
 pub struct BehaviourSystem {}
 
-impl BehaviourSystem {
-    fn start_entity(&mut self, entity: Entity) {
-        if let Some(entity) = entity.get_ref() {
-            if let Some(behaviour_delegate) = entity.component::<BehaviourDelegate>() {
-                behaviour_delegate.write().start(&entity);
-            }
-
-            for child in entity.children() {
-                self.start_entity(child);
-            }
+impl System for BehaviourSystem {
+    fn start(&mut self, entity: &EntityRef) {
+        if let Some(behaviour_delegate) = entity.component::<BehaviourDelegate>() {
+            behaviour_delegate.write().start(&entity);
         }
     }
 
-    fn update_entity(&mut self, entity: Entity) {
-        if let Some(entity) = entity.get_ref() {
-            if let Some(behaviour_delegate) = entity.component::<BehaviourDelegate>() {
-                behaviour_delegate.write().update(&entity);
-            }
-
-            for child in entity.children() {
-                self.update_entity(child);
-            }
+    fn update(&mut self, entity: &EntityRef) {
+        if let Some(behaviour_delegate) = entity.component::<BehaviourDelegate>() {
+            behaviour_delegate.write().update(&entity);
         }
-    }
-
-    pub fn start(&mut self, scene: &mut Scene) {
-        self.start_entity(scene.root());
-    }
-
-    pub fn update(&mut self, scene: &mut Scene) {
-        self.update_entity(scene.root());
     }
 }
