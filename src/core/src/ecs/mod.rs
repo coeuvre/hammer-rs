@@ -32,8 +32,8 @@ impl System for RenderSystem {
             let trans = entity.transform_to_world();
             renderer::set_transform(trans);
             let sprite = sprite.read();
-            if let Some(image) = sprite.image() {
-                renderer::rect(Rect::with_min_size(vector(0.0, 0.0), sprite.region().size())).texture(image).draw();
+            if let Some(frame) = sprite.frame() {
+                renderer::rect(Rect::with_min_size(vector(0.0, 0.0), frame.region().size())).texture(frame).draw();
             }
         }
     }

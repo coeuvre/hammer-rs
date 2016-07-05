@@ -1,12 +1,11 @@
-use asset::{asset, Image, ImageRef};
+use asset::{asset, Image, ImageRef, Frame};
 use math::*;
 
 use super::Component;
 
 #[derive(Clone, Default)]
 pub struct Sprite {
-    image: Option<ImageRef>,
-    region: Rect,
+    frame: Option<Frame>,
     anchor: Vector,
 }
 
@@ -15,37 +14,27 @@ impl Component for Sprite {}
 impl Sprite {
     pub fn new(path: &str) -> Sprite {
         let image = asset::<Image>::load(path).ok();
-        let (w, h) = image.as_ref().map(|image| image.read().size()).unwrap_or((0, 0));
+        let frame = image.map(|image| {
+            let (w, h) = image.read().size();
+            Frame::new(image, Rect::with_min_size(Vector::zero(), vector(w as f32, h as f32)))
+        });
         Sprite {
-            image: image,
-            region: Rect::with_min_size(vector(0.0, 0.0), vector(w as f32, h as f32)),
+            frame: frame,
             anchor: vector(0.0, 0.0),
         }
     }
 
     pub fn with_image(image: ImageRef) -> Sprite {
         let (w, h) = image.read().size();
+        let frame = Frame::new(image, Rect::with_min_size(Vector::zero(), vector(w as f32, h as f32)));
         Sprite {
-            image: Some(image),
-            region: Rect::with_min_size(Vector::zero(), vector(w as f32, h as f32)),
+            frame: Some(frame),
             anchor: Vector::zero(),
         }
     }
 
-    pub fn image(&self) -> Option<&ImageRef> {
-        if let Some(ref image) = self.image {
-            Some(image)
-        } else {
-            None
-        }
-    }
-
-    pub fn region(&self) -> &Rect {
-        &self.region
-    }
-
-    pub fn set_region(&mut self, region: Rect) {
-        self.region = region
+    pub fn frame(&self) -> Option<&Frame> {
+        self.frame.as_ref()
     }
 
     pub fn anchor(&self) -> &Vector {

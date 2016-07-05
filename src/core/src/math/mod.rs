@@ -43,7 +43,7 @@ impl Div<Scalar> for Vector {
     }
 }
 
-#[derive(Copy, Clone, Default, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct Rect {
     min: Vector,
     max: Vector,

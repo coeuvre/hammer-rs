@@ -2,13 +2,14 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::fmt;
-use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::path::Path;
 
 use Error;
 
 use typemap::{TypeMap, Key};
 
-pub use self::image::{Image, ImageRef};
+pub use self::image::{Image, ImageRef, Frame};
 
 pub mod image;
 
@@ -16,9 +17,8 @@ pub trait Asset: Any + Send + Sync {
     fn name() -> &'static str;
 }
 
-pub trait Source<A: Asset> {
-    fn to_string(&self) -> String;
-    fn load(&self) -> Result<A, Error>;
+pub trait Loadable: Sized {
+    fn load<P: AsRef<Path>>(path: P) -> Result<Self, Error>;
 }
 
 pub struct AssetRef<A: Asset> {
@@ -44,6 +44,10 @@ impl<A: Asset> AssetRef<A> {
     pub fn read(&self) -> RwLockReadGuard<A> {
         self.asset.read().unwrap()
     }
+
+    pub fn write(&self) -> RwLockWriteGuard<A> {
+        self.asset.write().unwrap()
+    }
 }
 
 struct Slot<A: Asset> {
@@ -56,52 +60,6 @@ impl<A: Asset> Slot<A> {
         Slot {
             id: id,
             asset: Arc::new(RwLock::new(SlotState::Unloaded)),
-        }
-    }
-
-    pub fn load<S: Source<A>>(self, src: S) -> Result<AssetRef<A>, Error> {
-        {
-            let mut asset = self.asset.write().unwrap();
-            match *asset {
-                SlotState::Loading => {
-                    return Err(format!("Asset {} is loading.", self).into());
-                }
-
-                SlotState::Loaded(ref asset) => {
-                    return Ok(asset.clone());
-                }
-
-                _ => {}
-            }
-
-            *asset = SlotState::Loading;
-        }
-
-        let result = src.load();
-
-        {
-            let mut asset = self.asset.write().unwrap();
-
-            match *asset {
-                SlotState::Loading => {
-                    match result {
-                        Ok(a) => {
-                            let asset_ref = AssetRef { asset: Arc::new(RwLock::new(a)) };
-                            *asset = SlotState::Loaded(asset_ref.clone());
-                            info!("Loaded {}", self);
-                            Ok(asset_ref)
-                        }
-
-                        Err(e) => {
-                            let err = Err(format!("{}", e).into());
-                            *asset = SlotState::LoadError(e);
-                            err
-                        }
-                    }
-                }
-
-                _ => Err("Loading interupted".into()),
-            }
         }
     }
 
@@ -139,6 +97,54 @@ impl<A: Asset> Slot<A> {
     */
 }
 
+impl<A: Asset + Loadable> Slot<A> {
+    pub fn load<P: AsRef<Path>>(self, path: P) -> Result<AssetRef<A>, Error> {
+        {
+            let mut asset = self.asset.write().unwrap();
+            match *asset {
+                SlotState::Loading => {
+                    return Err(format!("Asset {} is loading.", self).into());
+                }
+
+                SlotState::Loaded(ref asset) => {
+                    return Ok(asset.clone());
+                }
+
+                _ => {}
+            }
+
+            *asset = SlotState::Loading;
+        }
+
+        let result = A::load(path);
+
+        {
+            let mut asset = self.asset.write().unwrap();
+
+            match *asset {
+                SlotState::Loading => {
+                    match result {
+                        Ok(a) => {
+                            let asset_ref = AssetRef { asset: Arc::new(RwLock::new(a)) };
+                            *asset = SlotState::Loaded(asset_ref.clone());
+                            info!("Loaded {}", self);
+                            Ok(asset_ref)
+                        }
+
+                        Err(e) => {
+                            let err = Err(format!("{}", e).into());
+                            *asset = SlotState::LoadError(e);
+                            err
+                        }
+                    }
+                }
+
+                _ => Err("Loading interupted".into()),
+            }
+        }
+    }
+}
+
 impl<A: Asset> Clone for Slot<A> {
     fn clone(&self) -> Self {
         Slot {
@@ -159,12 +165,14 @@ pub struct asset<A: Asset> {
     phantom: PhantomData<A>,
 }
 
-impl<A: Asset> asset<A> {
-    pub fn load<S: Source<A>>(src: S) -> Result<AssetRef<A>, Error> {
-        let id = src.to_string();
-        ASSETS.slots.acquire::<A>(&id).load(src)
+impl<A: Asset + Loadable> asset<A> {
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<AssetRef<A>, Error> {
+        let id = format!("{}", path.as_ref().display()).replace("\\", "/");
+        ASSETS.slots.acquire::<A>(&id).load(path)
     }
+}
 
+impl<A: Asset> asset<A> {
     pub fn get(id: &str) -> Option<AssetRef<A>> {
         ASSETS.slots.get::<A>(id).and_then(|slot| slot.get())
     }

@@ -1,3 +1,4 @@
+pub use Error;
 pub use math::*;
 pub use window::*;
 pub use renderer::*;

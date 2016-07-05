@@ -25,7 +25,7 @@ use math::Transform;
 
 use std::collections::HashSet;
 
-pub fn run(scene: Scene) {
+pub fn run(scene: Scene, mut systems: Vec<Box<System>>) {
     let mut started_scene: HashSet<String> = HashSet::new();
 
     scene::push(scene);
@@ -35,7 +35,6 @@ pub fn run(scene: Scene) {
 
     renderer::set_target(&window);
 
-    let mut systems: Vec<Box<System>> = Vec::new();
     systems.push(Box::new(RenderSystem {}));
     systems.push(Box::new(BehaviourSystem {}));
 

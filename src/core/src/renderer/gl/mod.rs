@@ -115,27 +115,27 @@ impl<'a> AsTexture for Image {
     }
 }
 
-// impl<'a> AsTexture for Sprite {
-//     fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error> {
-//         let image = self.image().read();
-//         let id = image.id();
-//         if !textures.contains_key(&id) {
-//             match Texture::new(&context, &*image) {
-//                 Ok(texture) => {
-//                     textures.insert(id, texture);
-//                 }
-//
-//                 Err(e) => return Err(e),
-//             }
-//         }
-//
-//         let texture = textures.get(&id).unwrap();
-//         Ok(TextureRef {
-//             texture: texture,
-//             src: *self.region(),
-//         })
-//     }
-// }
+impl<'a> AsTexture for Frame {
+    fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error> {
+        let image = self.image().read();
+        let id = image.id();
+        if !textures.contains_key(&id) {
+            match Texture::new(&context, &*image) {
+                Ok(texture) => {
+                    textures.insert(id, texture);
+                }
+
+                Err(e) => return Err(e),
+            }
+        }
+
+        let texture = textures.get(&id).unwrap();
+        Ok(TextureRef {
+            texture: texture,
+            src: *self.region(),
+        })
+    }
+}
 
 impl<A: Asset + AsTexture> AsTexture for AssetRef<A> {
     fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error> {

@@ -6,6 +6,8 @@ use super::*;
 
 use Error;
 
+use math::Rect;
+
 use util::stb_image::*;
 use util::cstr_to_string;
 
@@ -44,13 +46,9 @@ impl Asset for Image {
     }
 }
 
-impl<P: AsRef<Path>> Source<Image> for P {
-    fn to_string(&self) -> String {
-        format!("{}", self.as_ref().display()).replace("\\", "/")
-    }
-
-    fn load(&self) -> Result<Image, Error> {
-        let path = self.as_ref();
+impl Loadable for Image {
+    fn load<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+        let path = path.as_ref();
         unsafe {
             let cstr = CString::new(&*path.as_os_str().to_string_lossy()).unwrap();
             let mut w = 0;
@@ -76,5 +74,38 @@ impl<P: AsRef<Path>> Source<Image> for P {
                 Err(format!("Failed to load {}: {}", path.display(), cstr_to_string(stbi_failure_reason())).into())
             }
         }
+    }
+}
+/*
+impl<P: AsRef<Path>> Source<Image> for P {
+    fn to_string(&self) -> String {
+        format!("{}", self.as_ref().display()).replace("\\", "/")
+    }
+
+    fn load(&self) -> Result<Image, Error> {
+    }
+}
+*/
+
+#[derive(Clone)]
+pub struct Frame {
+    image: ImageRef,
+    region: Rect,
+}
+
+impl Frame {
+    pub fn new(image: ImageRef, region: Rect) -> Frame {
+        Frame {
+            image: image,
+            region: region,
+        }
+    }
+
+    pub fn image(&self) -> &ImageRef {
+        &self.image
+    }
+
+    pub fn region(&self) -> &Rect {
+        &self.region
     }
 }
