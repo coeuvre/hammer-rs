@@ -11,6 +11,8 @@ use std::sync::*;
 use std::sync::mpsc::*;
 use std::thread;
 
+use input::keyboard::Key;
+
 use self::winapi::basetsd::*;
 use self::winapi::minwindef::*;
 use self::winapi::windef::*;
@@ -38,6 +40,8 @@ macro_rules! wstr {
 #[derive(Debug)]
 pub enum Event {
     Resize { x: i32, y: i32, w: i32, h: i32, },
+    KeyDown(Key),
+    KeyUp(Key),
     Close,
 }
 
@@ -437,9 +441,12 @@ fn window_proc(hwnd: HWND, msg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT
 
         WM_KEYDOWN => {
             let key = wparam as winapi::c_int;
-            if key == VK_ESCAPE {
-                state.event_tx.send(Event::Close).unwrap();
-            }
+            state.event_tx.send(Event::KeyDown(winkey_to_key(key))).unwrap();
+        }
+
+        WM_KEYUP => {
+            let key = wparam as winapi::c_int;
+            state.event_tx.send(Event::KeyUp(winkey_to_key(key))).unwrap();
         }
 
         _ => {
@@ -461,7 +468,7 @@ unsafe fn create_window(hinstance: HINSTANCE, class_name: &Vec<u16>, builder: &W
     let title = wstr!(&builder.title);
     let x = builder.x.unwrap_or(CW_USEDEFAULT);
     let y = builder.y.unwrap_or(CW_USEDEFAULT);
-    
+
     // Calcuate window size base on client area size
     let (w, h) = if builder.w.is_some() && builder.h.is_some() {
         let w = builder.w.unwrap();
@@ -526,4 +533,17 @@ unsafe fn create_gl_context(hdc: HDC) -> HGLRC {
     SetPixelFormat(hdc, pfi, &mut pfd);
 
     wglCreateContext(hdc)
+}
+
+fn winkey_to_key(key: winapi::c_int) -> Key {
+    match key {
+        VK_UP => Key::Up,
+        VK_DOWN => Key::Down,
+        VK_LEFT => Key::Left,
+        VK_RIGHT => Key::Right,
+        VK_RETURN => Key::Return,
+        VK_ESCAPE => Key::Escape,
+        VK_SPACE => Key::Space,
+        _ => Key::Unknown,
+    }
 }

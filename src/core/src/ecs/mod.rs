@@ -10,7 +10,7 @@ use renderer::{self, Drawable};
 
 use util::counter::Counter;
 
-use self::component::{Component, ComponentRef, BehaviourDelegate};
+use self::component::{Component, ComponentRef, Behaviour, BehaviourDelegate};
 use self::component::sprite::Sprite;
 
 pub mod component;
@@ -64,10 +64,18 @@ impl Entity {
         }
     }
 
+    pub fn add_behaviour<B: Behaviour + 'static>(&self, behaviour: B) {
+        self.add_component(BehaviourDelegate::new(behaviour));
+    }
+
     pub fn add_child(&self, child: Entity) {
         if let Some(parent) = self.get_ref() {
             parent.add_child(child);
         }
+    }
+
+    pub fn id(&self) -> String {
+        self.get_ref().map(|entity| entity.id()).unwrap_or("".to_string())
     }
 
     pub fn parent(&self) -> Option<Entity> {
@@ -113,6 +121,10 @@ impl EntityRef {
 
     pub fn component<C: Component>(&self) -> Option<ComponentRef<C>> {
         self.read().component::<C>()
+    }
+
+    pub fn id(&self) -> String {
+        self.read().id().to_string()
     }
 
     pub fn parent(&self) -> Option<Entity> {

@@ -5,6 +5,7 @@ pub use renderer::*;
 pub use asset::*;
 pub use scene;
 pub use scene::*;
-pub use input::*;
+pub use input;
+pub use input::keyboard::Key;
 pub use ecs::*;
 pub use ecs::component::*;

@@ -22,6 +22,7 @@ pub type Error = Box<std::error::Error + Send + Sync>;
 use scene::*;
 use ecs::*;
 use math::Transform;
+use input::keyboard::Key;
 
 use std::collections::HashSet;
 
@@ -43,25 +44,37 @@ pub fn run(scene: Scene, mut systems: Vec<Box<System>>) {
     renderer::set_projection(Transform::ortho(0.0, view_w, 0.0, view_h));
 
     'game_loop: loop {
+        input::keyboard::update();
+
         for event in window.poll_events() {
             match event {
                 window::Event::Close => break 'game_loop,
+                window::Event::KeyDown(key) => input::keyboard::set_down(key),
+                window::Event::KeyUp(key) => input::keyboard::set_up(key),
                 _ => {}
             }
         }
 
-        renderer::clear(0.0, 0.0, 0.0, 1.0);
-
-        if let Some(scene) = scene::top() {
-            if !started_scene.contains(scene.read().id()) {
-                start_entity(&mut systems, scene.read().root());
-                started_scene.insert(scene.read().id().to_string());
-            }
-
-            update_entity(&mut systems, scene.read().root());
+        if input::keyboard::down(Key::Escape) {
+            break 'game_loop;
         }
 
-        renderer::present();
+        renderer::clear(0.0, 0.0, 0.0, 1.0);
+
+        match scene::top() {
+            Some(scene) => {
+                if !started_scene.contains(scene.read().id()) {
+                    start_entity(&mut systems, scene.read().root());
+                    started_scene.insert(scene.read().id().to_string());
+                }
+
+                update_entity(&mut systems, scene.read().root());
+
+                renderer::present();
+            }
+
+            None => break 'game_loop,
+        }
     }
 }
 
@@ -88,21 +101,3 @@ fn update_entity(systems: &mut Vec<Box<System>>, entity: Entity) {
         }
     }
 }
-
-/*
-            let view_w = 640.0;
-            let view_h = 480.0;
-
-            self.renderer.ortho(0.0, view_w, 0.0, view_h);
-
-            self.renderer.clear(0.0, 0.0, 0.0, 1.0);
-
-            self.process_entity(scene.root());
-
-            self.renderer.present();
-
-
-        if let Some(orig_trans) = orig_trans {
-            self.renderer.set_trans(orig_trans);
-        }
-        */
