@@ -22,9 +22,9 @@ pub type Error = Box<std::error::Error + Send + Sync>;
 use scene::*;
 use ecs::*;
 use math::Transform;
-use input::keyboard::Key;
 
 use std::collections::HashSet;
+use std::time::{Duration, Instant};
 
 pub fn run(scene: Scene, mut systems: Vec<Box<System>>) {
     let mut started_scene: HashSet<String> = HashSet::new();
@@ -43,7 +43,11 @@ pub fn run(scene: Scene, mut systems: Vec<Box<System>>) {
     let view_h = 480.0;
     renderer::set_projection(Transform::ortho(0.0, view_w, 0.0, view_h));
 
+    let frame_time = Duration::from_millis(16);
+
     'game_loop: loop {
+        let frame_start = Instant::now();
+
         input::keyboard::update();
 
         for event in window.poll_events() {
@@ -53,10 +57,6 @@ pub fn run(scene: Scene, mut systems: Vec<Box<System>>) {
                 window::Event::KeyUp(key) => input::keyboard::set_up(key),
                 _ => {}
             }
-        }
-
-        if input::keyboard::down(Key::Escape) {
-            break 'game_loop;
         }
 
         renderer::clear(0.0, 0.0, 0.0, 1.0);
@@ -74,6 +74,15 @@ pub fn run(scene: Scene, mut systems: Vec<Box<System>>) {
             }
 
             None => break 'game_loop,
+        }
+
+        // {
+        //     let elapsed = frame_start.elapsed();
+        //     info!("Frame time {} ms", ((elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1_000_000_000.0) * 1000.0) as u32);
+        // }
+
+        if frame_time > frame_start.elapsed() {
+            std::thread::sleep(frame_time - frame_start.elapsed());
         }
     }
 }
