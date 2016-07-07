@@ -40,9 +40,9 @@ impl Renderer {
         })
     }
 
-    pub fn transform(&self) -> &Transform {
-        &self.world_to_window_trans
-    }
+    // pub fn transform(&self) -> &Transform {
+    //     &self.world_to_window_trans
+    // }
 
     pub fn set_transform(&mut self, trans: Transform) {
         self.world_to_window_trans = trans;
@@ -53,9 +53,9 @@ impl Renderer {
         self.context.clear();
     }
 
-    pub fn resize(&mut self, w: i32, h: i32) {
-        self.context.viewport(0, 0, w, h);
-    }
+    // pub fn resize(&mut self, w: i32, h: i32) {
+    //     self.context.viewport(0, 0, w, h);
+    // }
 
     pub fn present(&mut self) {
         self.context.swap_buffers();

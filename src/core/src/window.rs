@@ -544,6 +544,8 @@ fn winkey_to_key(key: winapi::c_int) -> Key {
         VK_RETURN => Key::Return,
         VK_ESCAPE => Key::Escape,
         VK_SPACE => Key::Space,
+        0x45 => Key::E,
+        0x51 => Key::Q,
         _ => Key::Unknown,
     }
 }

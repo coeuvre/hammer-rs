@@ -64,6 +64,14 @@ impl Rect {
         }
     }
 
+    pub fn with_center_size(center: Vector, size: Vector) -> Rect {
+        let half_size = size / 2.0;
+        Rect {
+            min: center - half_size,
+            max: center + half_size,
+        }
+    }
+
     pub fn min(&self) -> &Vector {
         &self.min
     }
@@ -74,6 +82,22 @@ impl Rect {
 
     pub fn size(&self) -> Vector {
         self.max - self.min
+    }
+
+    pub fn left(&self) -> Scalar {
+        self.min.x
+    }
+
+    pub fn right(&self) -> Scalar {
+        self.max.x
+    }
+
+    pub fn bottom(&self) -> Scalar {
+        self.min.y
+    }
+
+    pub fn top(&self) -> Scalar {
+        self.max.y
     }
 }
 
@@ -158,13 +182,22 @@ impl Transform {
         }
     }
 
-    pub fn get_position(&self) -> Vector {
+    pub fn position(&self) -> Vector {
         vector(self.x, self.y)
     }
 
     pub fn set_position(&mut self, x: Scalar, y: Scalar) {
         self.x = x;
         self.y = y;
+    }
+
+    pub fn offset_by(&mut self, x: Scalar, y: Scalar) {
+        self.x += x;
+        self.y += y;
+    }
+
+    pub fn rotate_by(&mut self, rad: Scalar) {
+        *self = Transform::rotate(rad) * *self;
     }
 
     /// If the given transform cannot be inverted, return the unchanged one.

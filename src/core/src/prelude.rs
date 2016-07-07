@@ -9,3 +9,5 @@ pub use input;
 pub use input::keyboard::Key;
 pub use ecs::*;
 pub use ecs::component::*;
+pub use ecs::system::System;
+pub use ecs::system::behaviour::Behaviour;

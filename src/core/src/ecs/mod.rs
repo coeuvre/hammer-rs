@@ -6,38 +6,18 @@ use std::rc::Rc;
 use typemap::{TypeMap, Key};
 
 use math::*;
-use renderer::{self, Drawable};
 
 use util::counter::Counter;
 
-use self::component::{Component, ComponentRef, Behaviour, BehaviourDelegate};
-use self::component::sprite::Sprite;
+use self::component::{Component, ComponentRef};
+use self::system::behaviour::{Behaviour, BehaviourDelegate};
 
 pub mod component;
+pub mod system;
 
 thread_local!(static WORLD: World = World::new());
 
 thread_local!(static COUNTER: Counter<usize> = Counter::new());
-
-pub trait System {
-    fn start(&mut self, _entity: &EntityRef) {}
-    fn update(&mut self, _entity: &EntityRef) {}
-}
-
-pub struct RenderSystem {}
-
-impl System for RenderSystem {
-    fn update(&mut self, entity: &EntityRef) {
-        if let Some(sprite) = entity.component::<Sprite>() {
-            let trans = entity.transform_to_world();
-            renderer::set_transform(trans);
-            let sprite = sprite.read();
-            if let Some(frame) = sprite.frame() {
-                renderer::rect(Rect::with_min_size(vector(0.0, 0.0), frame.region().size())).texture(frame).draw();
-            }
-        }
-    }
-}
 
 #[derive(Hash, Eq, PartialEq, Copy, Clone)]
 pub struct Entity(usize);
@@ -216,21 +196,5 @@ impl World {
     pub fn entity_ref(&self, entity: &Entity) -> Option<EntityRef> {
         let entities = self.entities.borrow();
         entities.get(entity).cloned()
-    }
-}
-
-pub struct BehaviourSystem {}
-
-impl System for BehaviourSystem {
-    fn start(&mut self, entity: &EntityRef) {
-        if let Some(behaviour_delegate) = entity.component::<BehaviourDelegate>() {
-            behaviour_delegate.write().start(&entity);
-        }
-    }
-
-    fn update(&mut self, entity: &EntityRef) {
-        if let Some(behaviour_delegate) = entity.component::<BehaviourDelegate>() {
-            behaviour_delegate.write().update(&entity);
-        }
     }
 }

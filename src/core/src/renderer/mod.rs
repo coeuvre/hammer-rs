@@ -7,6 +7,48 @@ use self::gl::Renderer;
 use math::*;
 use window::Window;
 
+pub struct RenderCamera {
+    region: Rect,
+    // viewport: Rect,
+    background: (f32, f32, f32, f32),
+    transform: Transform,
+}
+
+impl RenderCamera {
+    pub fn new(region: Rect) -> RenderCamera {
+        RenderCamera {
+            region: region,
+            // viewport: Rect::with_min_size(Vector::zero(), vector(1.0, 1.0)),
+            background: (0.0, 0.0, 0.0, 1.0),
+            transform: Transform::identity(),
+        }
+    }
+
+    pub fn transform(&self) -> Transform {
+        self.transform
+    }
+
+    pub fn set_transform(&mut self, trans: Transform) {
+        self.transform = trans;
+    }
+
+    pub fn region(&self) -> &Rect {
+        &self.region
+    }
+
+    pub fn set_region(&mut self, region: Rect) {
+        self.region = region;
+    }
+
+    pub fn background(&self) -> (f32, f32, f32, f32) {
+        self.background
+    }
+
+    pub fn set_background(&mut self, background: (f32, f32, f32, f32)) {
+        self.background = background;
+    }
+}
+
 pub trait Drawable {
     fn draw(&mut self);
 }
@@ -41,12 +83,14 @@ impl<'b, T: gl::AsTexture + 'b> Drawable for TexturedQuad<'b, T> {
 
 struct Context {
     renderer: RefCell<Option<Renderer>>,
+    cameras: RefCell<Vec<RenderCamera>>,
 }
 
 impl Context {
     pub fn new() -> Context {
         Context {
             renderer: RefCell::new(None),
+            cameras: RefCell::new(Vec::new()),
         }
     }
 
@@ -77,6 +121,20 @@ impl Context {
             renderer.present();
         }
     }
+
+    pub fn add_camera(&self, camera: RenderCamera) {
+        self.cameras.borrow_mut().push(camera);
+    }
+
+    pub fn clear_camera(&self) {
+        self.cameras.borrow_mut().clear();
+    }
+
+    pub fn with_camera<F: FnMut(&RenderCamera)>(&self, mut f: F) {
+        for camera in self.cameras.borrow().iter() {
+            f(camera);
+        }
+    }
 }
 
 thread_local!(static CONTEXT: Context = Context::new());
@@ -105,4 +163,16 @@ pub fn rect(rect: Rect) -> Quad {
     Quad {
         rect: rect,
     }
+}
+
+pub fn add_camera(camera: RenderCamera) {
+    CONTEXT.with(|context| context.add_camera(camera))
+}
+
+pub fn clear_camera() {
+    CONTEXT.with(|context| context.clear_camera())
+}
+
+pub fn with_camera<F: FnMut(&RenderCamera)>(f: F) {
+    CONTEXT.with(|context| context.with_camera(f))
 }

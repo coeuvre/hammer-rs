@@ -21,12 +21,13 @@ pub type Error = Box<std::error::Error + Send + Sync>;
 
 use scene::*;
 use ecs::*;
+use ecs::system::*;
 use math::Transform;
 
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
-pub fn run(scene: Scene, mut systems: Vec<Box<System>>) {
+pub fn run(scene: Scene, mut pre_render_systems: Vec<Box<System>>, mut render_systems: Vec<Box<System>>) {
     let mut started_scene: HashSet<String> = HashSet::new();
 
     scene::push(scene);
@@ -36,12 +37,10 @@ pub fn run(scene: Scene, mut systems: Vec<Box<System>>) {
 
     renderer::set_target(&window);
 
-    systems.push(Box::new(RenderSystem {}));
-    systems.push(Box::new(BehaviourSystem {}));
+    pre_render_systems.push(Box::new(BehaviourSystem {}));
+    pre_render_systems.push(Box::new(CameraSystem::new()));
 
-    let view_w = 640.0;
-    let view_h = 480.0;
-    renderer::set_projection(Transform::ortho(0.0, view_w, 0.0, view_h));
+    render_systems.push(Box::new(SpriteSystem {}));
 
     let frame_time = Duration::from_millis(16);
 
@@ -59,18 +58,34 @@ pub fn run(scene: Scene, mut systems: Vec<Box<System>>) {
             }
         }
 
-        renderer::clear(0.0, 0.0, 0.0, 1.0);
-
         match scene::top() {
             Some(scene) => {
                 if !started_scene.contains(scene.read().id()) {
-                    start_entity(&mut systems, scene.read().root());
+                    start_entity(&mut pre_render_systems, scene.read().root());
+                    start_entity(&mut render_systems, scene.read().root());
                     started_scene.insert(scene.read().id().to_string());
                 }
 
-                update_entity(&mut systems, scene.read().root());
+                frame_begin(&mut pre_render_systems);
+                frame_begin(&mut render_systems);
 
-                renderer::present();
+                update_entity(&mut pre_render_systems, scene.read().root());
+
+                renderer::with_camera(|camera| {
+                    let (r, g, b, a) = camera.background();
+                    renderer::clear(r, g, b, a);
+
+                    let region = camera.region();
+                    let projection = Transform::ortho(region.left(), region.right(), region.bottom(), region.top()) * camera.transform();
+                    renderer::set_projection(projection);
+
+                    update_entity(&mut render_systems, scene.read().root());
+
+                    renderer::present();
+                });
+
+                frame_end(&mut pre_render_systems);
+                frame_end(&mut render_systems);
             }
 
             None => break 'game_loop,
@@ -96,6 +111,18 @@ fn start_entity(systems: &mut Vec<Box<System>>, entity: Entity) {
         for child in entity.children() {
             start_entity(systems, child);
         }
+    }
+}
+
+fn frame_begin(systems: &mut Vec<Box<System>>) {
+    for system in systems.iter_mut() {
+        system.frame_begin();
+    }
+}
+
+fn frame_end(systems: &mut Vec<Box<System>>) {
+    for system in systems.iter_mut() {
+        system.frame_end();
     }
 }
 
