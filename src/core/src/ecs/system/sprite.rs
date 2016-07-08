@@ -5,9 +5,17 @@ use ecs::component::Sprite;
 
 use math::*;
 use renderer;
-use renderer::Drawable;
+use renderer::{Drawable, RenderOrder};
 
-pub struct SpriteSystem {}
+pub struct SpriteSystem {
+}
+
+impl SpriteSystem {
+    pub fn new() -> SpriteSystem {
+        SpriteSystem {
+        }
+    }
+}
 
 impl System for SpriteSystem {
     fn update(&mut self, entity: &EntityRef) {
@@ -17,7 +25,8 @@ impl System for SpriteSystem {
             let sprite = sprite.read();
             if let Some(frame) = sprite.frame() {
                 let anchor = sprite.anchor() % frame.region().size();
-                renderer::rect(Rect::with_min_size(-anchor, frame.region().size())).texture(frame).draw();
+                let order = RenderOrder::new(sprite.layer(), sprite.order());
+                renderer::rect(Rect::with_min_size(-anchor, frame.region().size())).texture(frame).push(order);
             }
         }
     }

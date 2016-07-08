@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
 mod gl;
 
@@ -49,41 +49,70 @@ impl RenderCamera {
     }
 }
 
-pub trait Drawable {
-    fn draw(&mut self);
+#[derive(Ord, PartialOrd, Eq, PartialEq)]
+pub struct RenderOrder {
+    pub layer: i32,
+    pub order: i32,
+    seq: usize,
 }
 
-pub struct Quad {
-    rect: Rect,
-}
-
-impl Quad {
-    pub fn texture<'b, T: gl::AsTexture + 'b>(self, texture: &'b T) -> TexturedQuad<'b, T> {
-        TexturedQuad {
-            texture: texture,
-            dst: self.rect,
+impl RenderOrder {
+    pub fn new(layer: i32, order: i32) -> RenderOrder {
+        RenderOrder {
+            layer: layer,
+            order: order,
+            seq: 0,
         }
     }
 }
 
-pub struct TexturedQuad<'b, T: 'b> {
-    texture: &'b T,
-    dst: Rect,
+pub trait Drawable {
+    fn push(self, order: RenderOrder);
+    fn draw(&self, renderer: &mut Renderer);
 }
 
-impl<'b, T: gl::AsTexture + 'b> Drawable for TexturedQuad<'b, T> {
-    fn draw(&mut self) {
+pub struct Quad {
+    rect: Rect,
+    trans: Transform,
+}
+
+impl Quad {
+    pub fn texture<T: gl::AsTexture>(self, texture: &T) -> TexturedQuad<T> {
+        TexturedQuad {
+            texture: texture.clone(),
+            dst: self.rect,
+            trans: self.trans,
+        }
+    }
+}
+
+pub struct TexturedQuad<T> {
+    texture: T,
+    dst: Rect,
+    trans: Transform,
+}
+
+impl<T: gl::AsTexture + 'static> Drawable for TexturedQuad<T> {
+    fn push(self, order: RenderOrder) {
         CONTEXT.with(|context| {
-            if let Some(ref mut renderer) = *context.renderer.borrow_mut() {
-                renderer.fill_with_texture(&self.dst, self.texture);
-            }
+            context.add_drawable(self, order);
         });
+    }
+
+    fn draw(&self, renderer: &mut Renderer) {
+        renderer.fill_with_texture(self.trans, &self.dst, &self.texture);
     }
 }
 
 struct Context {
     renderer: RefCell<Option<Renderer>>,
     cameras: RefCell<Vec<RenderCamera>>,
+
+    seq: Cell<usize>,
+    drawables: RefCell<Vec<(RenderOrder, Box<Drawable>)>>,
+
+    projection: RefCell<Transform>,
+    transform: RefCell<Transform>,
 }
 
 impl Context {
@@ -91,6 +120,10 @@ impl Context {
         Context {
             renderer: RefCell::new(None),
             cameras: RefCell::new(Vec::new()),
+            seq: Cell::new(0),
+            drawables: RefCell::new(Vec::new()),
+            projection: RefCell::new(Transform::identity()),
+            transform: RefCell::new(Transform::identity()),
         }
     }
 
@@ -99,15 +132,11 @@ impl Context {
     }
 
     pub fn set_transform(&self, trans: Transform) {
-        if let Some(ref mut renderer) = *self.renderer.borrow_mut() {
-            renderer.set_transform(trans);
-        }
+        *self.transform.borrow_mut() = trans;
     }
 
     pub fn set_projection(&self, trans: Transform) {
-        if let Some(ref mut renderer) = *self.renderer.borrow_mut() {
-            renderer.set_projection(trans);
-        }
+        *self.projection.borrow_mut() = trans;
     }
 
     pub fn clear(&self, r: f32, g: f32, b: f32, a: f32) {
@@ -118,7 +147,25 @@ impl Context {
 
     pub fn present(&self) {
         if let Some(ref mut renderer) = *self.renderer.borrow_mut() {
+            {
+                let mut drawables = self.drawables.borrow_mut();
+                drawables.sort_by(|a, b| a.0.cmp(&b.0));
+
+                for &(_, ref drawable) in drawables.iter() {
+                    drawable.draw(renderer);
+                }
+
+                drawables.clear();
+            }
+
             renderer.present();
+        }
+    }
+
+    pub fn rect(&self, rect: Rect) -> Quad {
+        Quad {
+            rect: rect,
+            trans: *self.projection.borrow() * *self.transform.borrow(),
         }
     }
 
@@ -134,6 +181,13 @@ impl Context {
         for camera in self.cameras.borrow().iter() {
             f(camera);
         }
+    }
+
+    pub fn add_drawable<T: Drawable + 'static>(&self, drawable: T, mut order: RenderOrder) {
+        let seq = self.seq.get();
+        order.seq = seq;
+        self.seq.set(seq + 1);
+        self.drawables.borrow_mut().push((order, Box::new(drawable)));
     }
 }
 
@@ -160,9 +214,7 @@ pub fn set_projection(trans: Transform) {
 }
 
 pub fn rect(rect: Rect) -> Quad {
-    Quad {
-        rect: rect,
-    }
+    CONTEXT.with(|context| context.rect(rect))
 }
 
 pub fn add_camera(camera: RenderCamera) {

@@ -7,6 +7,8 @@ use super::Component;
 pub struct Sprite {
     frame: Option<Frame>,
     anchor: Vector,
+    layer: i32,
+    order: i32,
 }
 
 impl Component for Sprite {}
@@ -21,6 +23,8 @@ impl Sprite {
         Sprite {
             frame: frame,
             anchor: vector(0.0, 0.0),
+            layer: 0,
+            order: 0,
         }
     }
 
@@ -30,6 +34,8 @@ impl Sprite {
         Sprite {
             frame: Some(frame),
             anchor: Vector::zero(),
+            layer: 0,
+            order: 0,
         }
     }
 
@@ -47,5 +53,21 @@ impl Sprite {
 
     pub fn set_anchor(&mut self, anchor: Vector) {
         self.anchor = anchor;
+    }
+
+    pub fn layer(&self) -> i32 {
+        self.layer
+    }
+
+    pub fn set_layer(&mut self, layer: i32) {
+        self.layer = layer;
+    }
+
+    pub fn order(&self) -> i32 {
+        self.order
+    }
+
+    pub fn set_order(&mut self, order: i32) {
+        self.order = order;
     }
 }

@@ -17,9 +17,6 @@ pub struct Renderer {
     context: Context,
     quad: QuadProgram,
 
-    projection: Transform,
-    world_to_window_trans: Transform,
-
     textures: TextureCache,
 }
 
@@ -33,19 +30,8 @@ impl Renderer {
             context: context,
             quad: quad,
 
-            projection: Transform::identity(),
-            world_to_window_trans: Transform::identity(),
-
             textures: TextureCache::new(),
         })
-    }
-
-    // pub fn transform(&self) -> &Transform {
-    //     &self.world_to_window_trans
-    // }
-
-    pub fn set_transform(&mut self, trans: Transform) {
-        self.world_to_window_trans = trans;
     }
 
     pub fn clear(&mut self, r: f32, g: f32, b: f32, a: f32) {
@@ -61,9 +47,8 @@ impl Renderer {
         self.context.swap_buffers();
     }
 
-    pub fn fill_with_texture<T: AsTexture>(&mut self, dst: &Rect, texture: &T) {
+    pub fn fill_with_texture<T: AsTexture>(&mut self, trans: Transform, dst: &Rect, texture: &T) {
         if let Ok(texture) = texture.as_texture(&self.context, &mut self.textures) {
-            let trans = self.projection * self.world_to_window_trans;
             self.quad.fill_with_texture(trans, dst, texture.texture, &texture.src);
         }
     }
@@ -78,10 +63,6 @@ impl Renderer {
         }
     }
 */
-
-    pub fn set_projection(&mut self, trans: Transform) {
-        self.projection = trans;
-    }
 }
 
 pub struct TextureRef<'a> {
@@ -89,15 +70,15 @@ pub struct TextureRef<'a> {
     src: Rect,
 }
 
-pub trait AsTexture {
+pub trait AsTexture: Clone {
     fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error>;
 }
 
-impl<'a> AsTexture for Image {
+impl<'a> AsTexture for ImageRef {
     fn as_texture<'r>(&self, context: &Context, textures: &'r mut TextureCache) -> Result<TextureRef<'r>, Error> {
-        let id = self.id();
+        let id = self.read().id();
         if !textures.contains_key(&id) {
-            match Texture::new(&context, self) {
+            match Texture::new(&context, &*self.read()) {
                 Ok(texture) => {
                     textures.insert(id, texture);
                 }

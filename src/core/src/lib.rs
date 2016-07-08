@@ -40,7 +40,7 @@ pub fn run(scene: Scene, mut pre_render_systems: Vec<Box<System>>, mut render_sy
     pre_render_systems.push(Box::new(BehaviourSystem {}));
     pre_render_systems.push(Box::new(CameraSystem::new()));
 
-    render_systems.push(Box::new(SpriteSystem {}));
+    render_systems.push(Box::new(SpriteSystem::new()));
 
     let frame_time = Duration::from_millis(16);
 
