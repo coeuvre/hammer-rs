@@ -160,6 +160,8 @@ impl Context {
 
             renderer.present();
         }
+
+        self.seq.set(0);
     }
 
     pub fn rect(&self, rect: Rect) -> Quad {

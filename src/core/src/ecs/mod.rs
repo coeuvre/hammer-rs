@@ -5,6 +5,8 @@ use std::rc::Rc;
 
 use typemap::{TypeMap, Key};
 
+use Error;
+
 use math::*;
 
 use util::counter::Counter;
@@ -23,23 +25,19 @@ thread_local!(static COUNTER: Counter<usize> = Counter::new());
 pub struct Entity(usize);
 
 impl Entity {
-    pub fn new() -> Entity {
-        Entity::with_id("Entity".to_string())
-    }
-
-    pub fn with_id(id: String) -> Entity {
+    pub fn new<S: Into<String>>(id: S) -> Entity {
         let entity = Entity(COUNTER.with(|counter| counter.next()));
-        let storage = EntityStorage::new(entity, id);
+        let storage = EntityStorage::new(entity, id.into());
         WORLD.with(|world| world.insert_entity(entity, storage));
         entity
     }
 
-    pub fn get_ref(&self) -> Option<EntityRef> {
+    pub fn as_ref(&self) -> Option<EntityRef> {
         WORLD.with(|world| world.entity_ref(self))
     }
 
     pub fn add_component<C: Component>(&self, component: C) {
-        if let Some(entity) = self.get_ref() {
+        if let Some(entity) = self.as_ref() {
             entity.add_component(component);
         }
     }
@@ -48,26 +46,28 @@ impl Entity {
         self.add_component(BehaviourDelegate::new(behaviour));
     }
 
-    pub fn add_child(&self, child: Entity) {
-        if let Some(parent) = self.get_ref() {
-            parent.add_child(child);
+    pub fn add_child(&self, child: Entity) -> Result<(), Error> {
+        if let Some(this) = self.as_ref() {
+            this.add_child(child)
+        } else {
+            Err("Entity does not exists.".into())
         }
     }
 
     pub fn id(&self) -> String {
-        self.get_ref().map(|entity| entity.id()).unwrap_or("".to_string())
+        self.as_ref().map(|entity| entity.id()).unwrap_or("".to_string())
     }
 
     pub fn parent(&self) -> Option<Entity> {
-        self.get_ref().and_then(|entity| entity.parent())
+        self.as_ref().and_then(|entity| entity.parent())
     }
 
     pub fn component<C: Component>(&self) -> Option<ComponentRef<C>> {
-        self.get_ref().and_then(|entity| entity.component::<C>())
+        self.as_ref().and_then(|entity| entity.component::<C>())
     }
 
     pub fn transform_to_world(&self) -> Transform {
-        self.get_ref().map(|entity| entity.transform_to_world()).unwrap_or(Transform::identity())
+        self.as_ref().map(|entity| entity.transform_to_world()).unwrap_or(Transform::identity())
     }
 }
 
@@ -95,8 +95,8 @@ impl EntityRef {
         self.write().add_component(component);
     }
 
-    pub fn add_child(&self, child: Entity) {
-        self.write().add_child(child);
+    pub fn add_child(&self, child: Entity) -> Result<(), Error> {
+        self.write().add_child(child)
     }
 
     pub fn component<C: Component>(&self) -> Option<ComponentRef<C>> {
@@ -141,10 +141,19 @@ impl EntityStorage {
         }
     }
 
-    pub fn add_child(&mut self, entity: Entity) {
-        if let Some(entity_ref) = entity.get_ref() {
+    pub fn add_child(&mut self, entity: Entity) -> Result<(), Error> {
+        if let Some(entity_ref) = entity.as_ref() {
+            let child_id = entity.id();
+            for child in self.children() {
+                if child.id() == child_id {
+                    return Err("Entity with id {} already exists.".into());
+                }
+            }
             entity_ref.write().parent = Some(self.entity);
             self.children.push(entity);
+            Ok(())
+        } else {
+            Err("Entity does not exists.".into())
         }
     }
 
