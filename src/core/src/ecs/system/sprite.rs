@@ -24,7 +24,7 @@ impl System for SpriteSystem {
             renderer::set_transform(trans);
             let sprite = sprite.read();
             if let Some(frame) = sprite.frame() {
-                let anchor = sprite.anchor() % frame.region().size();
+                let anchor = frame.anchor() % frame.region().size();
                 let order = RenderOrder::new(sprite.layer(), sprite.order());
                 renderer::rect(Rect::with_min_size(-anchor, frame.region().size())).texture(frame).push(order);
             }

@@ -37,6 +37,7 @@ pub fn run(scene: Scene, mut pre_render_systems: Vec<Box<System>>, mut render_sy
 
     renderer::set_target(&window);
 
+    pre_render_systems.push(Box::new(AnimationSystem {}));
     pre_render_systems.push(Box::new(BehaviourSystem {}));
     pre_render_systems.push(Box::new(CameraSystem::new()));
 

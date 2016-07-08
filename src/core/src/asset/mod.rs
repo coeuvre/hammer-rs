@@ -10,8 +10,10 @@ use Error;
 use typemap::{TypeMap, Key};
 
 pub use self::image::{Image, ImageRef, Frame};
+pub use self::animation::{Animation, AnimationRef};
 
 pub mod image;
+pub mod animation;
 
 pub trait Asset: Any + Send + Sync {
     fn name() -> &'static str;
@@ -41,6 +43,12 @@ impl<A: Asset> Clone for AssetRef<A> {
 }
 
 impl<A: Asset> AssetRef<A> {
+    pub fn new(asset: A) -> AssetRef<A> {
+        AssetRef {
+            asset: Arc::new(RwLock::new(asset)),
+        }
+    }
+
     pub fn read(&self) -> RwLockReadGuard<A> {
         self.asset.read().unwrap()
     }
@@ -74,6 +82,19 @@ impl<A: Asset> Slot<A> {
         }
     }
 
+    pub fn set(&self, asset: A) -> Option<AssetRef<A>> {
+        let mut new_asset = SlotState::Loaded(AssetRef::new(asset));
+        let mut asset = self.asset.write().unwrap();
+
+        ::std::mem::swap(&mut *asset, &mut new_asset);
+
+        let old_asset = new_asset;
+        match old_asset {
+            SlotState::Loaded(asset) => Some(asset),
+            _ => None,
+        }
+    }
+
     /*
     pub fn loaded(&self) -> bool {
         match *self.asset.read().unwrap() {
@@ -82,18 +103,6 @@ impl<A: Asset> Slot<A> {
         }
     }
 
-    pub fn set(&self, asset: AssetRef<A>) -> Option<AssetRef<A>> {
-        let mut new_asset = SlotState::Loaded(asset);
-        let mut asset = self.asset.write().unwrap();
-
-        mem::swap(&mut *asset, &mut new_asset);
-
-        let old_asset = new_asset;
-        match old_asset {
-            SlotState::Loaded(asset) => Some(asset),
-            _ => None,
-        }
-    }
     */
 }
 
@@ -173,6 +182,12 @@ impl<A: Asset + Loadable> asset<A> {
 }
 
 impl<A: Asset> asset<A> {
+    pub fn set<S: Into<String>>(id: S, asset: A) -> Option<AssetRef<A>> {
+        let id = id.into();
+        let slot = ASSETS.slots.acquire::<A>(&id);
+        slot.set(asset)
+    }
+
     pub fn get(id: &str) -> Option<AssetRef<A>> {
         ASSETS.slots.get::<A>(id).and_then(|slot| slot.get())
     }

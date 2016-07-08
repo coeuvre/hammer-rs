@@ -6,7 +6,6 @@ use super::Component;
 #[derive(Clone, Default)]
 pub struct Sprite {
     frame: Option<Frame>,
-    anchor: Vector,
     layer: i32,
     order: i32,
 }
@@ -22,7 +21,14 @@ impl Sprite {
         });
         Sprite {
             frame: frame,
-            anchor: vector(0.0, 0.0),
+            layer: 0,
+            order: 0,
+        }
+    }
+
+    pub fn empty() -> Sprite {
+        Sprite {
+            frame: None,
             layer: 0,
             order: 0,
         }
@@ -33,7 +39,6 @@ impl Sprite {
         let frame = Frame::new(image, Rect::with_min_size(Vector::zero(), vector(w as f32, h as f32)));
         Sprite {
             frame: Some(frame),
-            anchor: Vector::zero(),
             layer: 0,
             order: 0,
         }
@@ -47,12 +52,8 @@ impl Sprite {
         self.frame.as_mut()
     }
 
-    pub fn anchor(&self) -> Vector {
-        self.anchor
-    }
-
-    pub fn set_anchor(&mut self, anchor: Vector) {
-        self.anchor = anchor;
+    pub fn set_frame(&mut self, frame: Option<Frame>) {
+        self.frame = frame;
     }
 
     pub fn layer(&self) -> i32 {

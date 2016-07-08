@@ -6,7 +6,7 @@ use super::*;
 
 use Error;
 
-use math::Rect;
+use math::{Rect, Vector};
 
 use util::stb_image::*;
 use util::cstr_to_string;
@@ -81,6 +81,7 @@ impl Loadable for Image {
 pub struct Frame {
     image: ImageRef,
     region: Rect,
+    anchor: Vector,
 }
 
 impl Frame {
@@ -88,6 +89,7 @@ impl Frame {
         Frame {
             image: image,
             region: region,
+            anchor: Vector::zero(),
         }
     }
 
@@ -101,5 +103,13 @@ impl Frame {
 
     pub fn set_region(&mut self, region: Rect) {
         self.region = region;
+    }
+
+    pub fn anchor(&self) -> Vector {
+        self.anchor
+    }
+
+    pub fn set_anchor(&mut self, anchor: Vector) {
+        self.anchor = anchor;
     }
 }

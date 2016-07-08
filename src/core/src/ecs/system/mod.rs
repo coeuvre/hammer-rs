@@ -1,7 +1,10 @@
+pub use self::animation::AnimationSystem;
 pub use self::camera::CameraSystem;
 pub use self::behaviour::BehaviourSystem;
+
 pub use self::sprite::SpriteSystem;
 
+pub mod animation;
 pub mod camera;
 pub mod behaviour;
 
