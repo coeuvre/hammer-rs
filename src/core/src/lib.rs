@@ -70,16 +70,17 @@ pub fn run(scene: Scene, mut pre_render_systems: Vec<Box<System>>, mut render_sy
                 frame_begin(&mut render_systems);
 
                 update_entity(&mut pre_render_systems, scene.read().root());
+                post_update_entity(&mut pre_render_systems, scene.read().root());
 
                 renderer::with_camera(|camera| {
                     let (r, g, b, a) = camera.background();
                     renderer::clear(r, g, b, a);
 
-                    let region = camera.region();
-                    let projection = Transform::ortho(region.left(), region.right(), region.bottom(), region.top()) * camera.transform();
+                    let projection = Transform::ortho(*camera.region()) * camera.transform();
                     renderer::set_projection(projection);
 
                     update_entity(&mut render_systems, scene.read().root());
+                    post_update_entity(&mut render_systems, scene.read().root());
 
                     renderer::present();
                 });
@@ -134,6 +135,18 @@ fn update_entity(systems: &mut Vec<Box<System>>, entity: Entity) {
 
         for child in entity.children() {
             update_entity(systems, child);
+        }
+    }
+}
+
+fn post_update_entity(systems: &mut Vec<Box<System>>, entity: Entity) {
+    if let Some(ref entity) = entity.get_ref() {
+        for system in systems.iter_mut() {
+            system.post_update(entity);
+        }
+
+        for child in entity.children() {
+            post_update_entity(systems, child);
         }
     }
 }

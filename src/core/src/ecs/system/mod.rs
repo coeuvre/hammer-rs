@@ -14,5 +14,6 @@ pub trait System {
 
     fn frame_begin(&mut self) {}
     fn update(&mut self, _entity: &EntityRef) {}
+    fn post_update(&mut self, _entity: &EntityRef) {}
     fn frame_end(&mut self) {}
 }

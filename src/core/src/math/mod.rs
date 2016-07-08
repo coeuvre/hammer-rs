@@ -1,4 +1,4 @@
-use std::ops::{Add, Sub, Mul, Div};
+use std::ops::{Add, Sub, Mul, Div, Rem, Neg};
 
 pub type Scalar = f32;
 
@@ -43,6 +43,31 @@ impl Div<Scalar> for Vector {
     }
 }
 
+impl Div<Vector> for Scalar {
+    type Output = Vector;
+
+    fn div(self, rhs: Vector) -> Vector {
+        vector(self / rhs.x, self / rhs.y)
+    }
+}
+
+impl Rem<Vector> for Vector {
+    type Output = Vector;
+
+    // Component-wise product
+    fn rem(self, rhs: Vector) -> Vector {
+        vector(self.x * rhs.x, self.y * rhs.y)
+    }
+}
+
+impl Neg for Vector {
+    type Output = Vector;
+
+    fn neg(self) -> Vector {
+        vector(-self.x, -self.y)
+    }
+}
+
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct Rect {
     min: Vector,
@@ -72,12 +97,12 @@ impl Rect {
         }
     }
 
-    pub fn min(&self) -> &Vector {
-        &self.min
+    pub fn min(&self) -> Vector {
+        self.min
     }
 
-    pub fn max(&self) -> &Vector {
-        &self.max
+    pub fn max(&self) -> Vector {
+        self.max
     }
 
     pub fn size(&self) -> Vector {
@@ -131,17 +156,17 @@ impl Transform {
         }
     }
 
-    pub fn offset(x: Scalar, y: Scalar) -> Transform {
+    pub fn offset(offset: Vector) -> Transform {
         Transform {
-            a: 1.0, c: 0.0, x: x,
-            b: 0.0, d: 1.0, y: y,
+            a: 1.0, c: 0.0, x: offset.x,
+            b: 0.0, d: 1.0, y: offset.y,
         }
     }
 
-    pub fn scale(sx: Scalar, sy: Scalar) -> Transform {
+    pub fn scale(scale: Vector) -> Transform {
         Transform {
-            a:  sx, c: 0.0, x: 0.0,
-            b: 0.0, d:  sy, y: 0.0,
+            a:  scale.x, c: 0.0, x: 0.0,
+            b: 0.0, d:  scale.y, y: 0.0,
         }
     }
 
@@ -154,7 +179,7 @@ impl Transform {
         }
     }
 
-    pub fn ortho(left: Scalar, right: Scalar, bottom: Scalar, top: Scalar) -> Transform {
+    pub fn ortho(rect: Rect) -> Transform {
         // x -> (left, right)
         // x - left -> (0, right - left)
         // (x - left) / (right - left) * 2 - 1  -> (-1, 1)
@@ -163,9 +188,9 @@ impl Transform {
         // y - bottom -> (0, top - bottom)
         // (y - bottom) / (top - bottom) * 2 - 1 -> (-1, 1)
         //
-        let trans = Transform::offset(-left, - bottom);
-        let trans = Transform::scale(2.0 / (right - left), 2.0 / (top - bottom)) * trans;
-        Transform::offset(-1.0, -1.0) * trans
+        let trans = Transform::offset(-rect.min());
+        let trans = Transform::scale(2.0 / rect.size()) * trans;
+        Transform::offset(vector(-1.0, -1.0)) * trans
     }
 
     pub fn xaxis(&self) -> Vector {

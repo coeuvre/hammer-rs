@@ -76,16 +76,6 @@ impl Loadable for Image {
         }
     }
 }
-/*
-impl<P: AsRef<Path>> Source<Image> for P {
-    fn to_string(&self) -> String {
-        format!("{}", self.as_ref().display()).replace("\\", "/")
-    }
-
-    fn load(&self) -> Result<Image, Error> {
-    }
-}
-*/
 
 #[derive(Clone)]
 pub struct Frame {
@@ -107,5 +97,9 @@ impl Frame {
 
     pub fn region(&self) -> &Rect {
         &self.region
+    }
+
+    pub fn set_region(&mut self, region: Rect) {
+        self.region = region;
     }
 }

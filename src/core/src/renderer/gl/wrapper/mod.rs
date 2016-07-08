@@ -261,7 +261,7 @@ impl QuadProgram {
         {
             let min = dst.min();
             let size = dst.size();
-            let trans = trans * Transform::offset(min.x, min.y) * Transform::scale(size.x, size.y);
+            let trans = trans * Transform::offset(min) * Transform::scale(size);
             let mat = trans.to_gl_mat3();
             self.program.set_uniform_matrix3_fv("u_trans", &mat);
         }
@@ -270,7 +270,7 @@ impl QuadProgram {
             let min = src.min();
             let size = src.size();
             let tex_size = texture.size();
-            let trans = Transform::scale(1.0 / tex_size.x, 1.0 / tex_size.y ) * Transform::offset(min.x, min.y) * Transform::scale(size.x, size.y);
+            let trans = Transform::scale(1.0 / tex_size) * Transform::offset(min) * Transform::scale(size);
             let mat = trans.to_gl_mat3();
             self.program.set_uniform_matrix3_fv("u_tex_trans", &mat);
         }

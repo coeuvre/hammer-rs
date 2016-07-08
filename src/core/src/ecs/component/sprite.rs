@@ -37,11 +37,15 @@ impl Sprite {
         self.frame.as_ref()
     }
 
-    pub fn anchor(&self) -> &Vector {
-        &self.anchor
+    pub fn frame_mut(&mut self) -> Option<&mut Frame> {
+        self.frame.as_mut()
     }
 
-    pub fn set_anchor(&mut self, x: Scalar, y: Scalar) {
-        self.anchor = vector(x, y);
+    pub fn anchor(&self) -> Vector {
+        self.anchor
+    }
+
+    pub fn set_anchor(&mut self, anchor: Vector) {
+        self.anchor = anchor;
     }
 }

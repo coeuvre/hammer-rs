@@ -12,7 +12,7 @@ impl System for CameraSystem {
         renderer::clear_camera();
     }
 
-    fn update(&mut self, entity: &EntityRef) {
+    fn post_update(&mut self, entity: &EntityRef) {
         if let Some(camera) = entity.component::<Camera>() {
             let trans = entity.transform_to_world();
             let camera = camera.read();

@@ -16,7 +16,8 @@ impl System for SpriteSystem {
             renderer::set_transform(trans);
             let sprite = sprite.read();
             if let Some(frame) = sprite.frame() {
-                renderer::rect(Rect::with_min_size(vector(0.0, 0.0), frame.region().size())).texture(frame).draw();
+                let anchor = sprite.anchor() % frame.region().size();
+                renderer::rect(Rect::with_min_size(-anchor, frame.region().size())).texture(frame).draw();
             }
         }
     }
