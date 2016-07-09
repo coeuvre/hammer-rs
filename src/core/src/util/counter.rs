@@ -1,21 +1,20 @@
 use std::sync::{Arc, Mutex};
-use std::num::{Zero, One};
-use std::ops::Add;
+use std::iter::Step;
 
 pub struct Counter<T> {
     count: Arc<Mutex<T>>,
 }
 
-impl<T: Copy + Zero + One + Add<T, Output = T>> Counter<T> {
-    pub fn new() -> Counter<T> {
+impl<T: Copy + Step> Counter<T> {
+    pub fn new(value: T) -> Counter<T> {
         Counter {
-            count: Arc::new(Mutex::new(T::zero())),
+            count: Arc::new(Mutex::new(value)),
         }
     }
 
     pub fn next(&self) -> T {
         let mut count = self.count.lock().unwrap();
-        let next = *count + T::one();
+        let next = count.add_one();
         *count = next;
         next
     }

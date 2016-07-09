@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 // Copy from SDL
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Key {
     Unknown = 0,
 

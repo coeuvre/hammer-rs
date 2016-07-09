@@ -20,7 +20,7 @@ impl Animator {
         }
     }
 
-    pub fn set_animation(&mut self, id: &str) {
+    pub fn play(&mut self, id: &str) {
         self.animation = asset::<Animation>::get(id);
         self.time = 0.0;
         self.frame_index = 0;

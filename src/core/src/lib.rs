@@ -1,4 +1,4 @@
-#![feature(zero_one)]
+#![feature(step_trait)]
 
 extern crate typemap;
 #[macro_use]

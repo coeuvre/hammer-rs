@@ -19,7 +19,7 @@ pub mod system;
 
 thread_local!(static WORLD: World = World::new());
 
-thread_local!(static COUNTER: Counter<usize> = Counter::new());
+thread_local!(static COUNTER: Counter<usize> = Counter::new(0));
 
 #[derive(Hash, Eq, PartialEq, Copy, Clone)]
 pub struct Entity(usize);

@@ -14,7 +14,7 @@ use util::cstr_to_string;
 use util::counter::Counter;
 
 lazy_static! {
-    static ref COUNTER: Counter<usize> = Counter::new();
+    static ref COUNTER: Counter<usize> = Counter::new(0);
 }
 
 pub type ImageRef = AssetRef<Image>;
