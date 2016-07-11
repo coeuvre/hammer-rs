@@ -60,7 +60,31 @@ impl Loadable for Image {
                 {
                     let data = ::std::slice::from_raw_parts(data, (w * 4 * h) as usize);
                     for row in data.chunks((w * 4) as usize).rev() {
-                        pixels.extend_from_slice(row);
+                        for pixel in row.chunks(4) {
+                            let mut r = pixel[0] as f32 / 255.0;
+                            let mut g = pixel[1] as f32 / 255.0;
+                            let mut b = pixel[2] as f32 / 255.0;
+                            let a = pixel[3] as f32 / 255.0;
+
+                            let gamma = 2.1;
+
+                            r = r.powf(gamma);
+                            g = g.powf(gamma);
+                            b = b.powf(gamma);
+
+                            r = r * a;
+                            g = g * a;
+                            b = b * a;
+
+                            r = r.powf(1.0 / gamma);
+                            g = g.powf(1.0 / gamma);
+                            b = b.powf(1.0 / gamma);
+
+                            pixels.push((r * 255.0) as u8);
+                            pixels.push((g * 255.0) as u8);
+                            pixels.push((b * 255.0) as u8);
+                            pixels.push(pixel[3]);
+                        }
                     }
                 }
                 stbi_image_free(data);

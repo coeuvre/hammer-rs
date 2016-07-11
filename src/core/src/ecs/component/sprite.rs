@@ -44,6 +44,14 @@ impl Sprite {
         }
     }
 
+    pub fn with_frame(frame: Frame) -> Sprite {
+        Sprite {
+            frame: Some(frame),
+            layer: 0,
+            order: 0,
+        }
+    }
+
     pub fn frame(&self) -> Option<&Frame> {
         self.frame.as_ref()
     }

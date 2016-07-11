@@ -19,6 +19,14 @@ pub fn vector(x: Scalar, y: Scalar) -> Vector {
     Vector { x: x, y: y }
 }
 
+impl Add<Scalar> for Vector {
+    type Output = Vector;
+
+    fn add(self, rhs: Scalar) -> Vector {
+        vector(self.x + rhs, self.y + rhs)
+    }
+}
+
 impl Add for Vector {
     type Output = Vector;
 
@@ -32,6 +40,14 @@ impl Sub for Vector {
 
     fn sub(self, rhs: Vector) -> Vector {
         vector(self.x - rhs.x, self.y - rhs.y)
+    }
+}
+
+impl Mul<Scalar> for Vector {
+    type Output = Vector;
+
+    fn mul(self, rhs: Scalar) -> Vector {
+        vector(self.x * rhs, self.y * rhs)
     }
 }
 
