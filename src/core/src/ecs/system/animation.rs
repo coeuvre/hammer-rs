@@ -1,6 +1,6 @@
 use super::System;
 
-use ecs::EntityRef;
+use ecs::Entity;
 use ecs::component::{Animator, Sprite};
 
 use input;
@@ -15,7 +15,7 @@ impl AnimationSystem {
 }
 
 impl System for AnimationSystem {
-    fn update(&mut self, entity: &EntityRef) {
+    fn update(&mut self, entity: Entity) {
         if let Some(animator) = entity.component::<Animator>() {
             animator.write().advance(input::delta());
 

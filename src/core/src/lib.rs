@@ -105,14 +105,12 @@ pub fn run(scene: Scene, mut pre_render_systems: Vec<Box<System>>, mut render_sy
 }
 
 fn start_entity(systems: &mut Vec<Box<System>>, entity: Entity) {
-    if let Some(ref entity) = entity.as_ref() {
-        for system in systems.iter_mut() {
-            system.start(entity);
-        }
+    for system in systems.iter_mut() {
+        system.start(entity);
+    }
 
-        for child in entity.children() {
-            start_entity(systems, child);
-        }
+    for child in entity.children() {
+        start_entity(systems, child);
     }
 }
 
@@ -129,25 +127,21 @@ fn frame_end(systems: &mut Vec<Box<System>>) {
 }
 
 fn update_entity(systems: &mut Vec<Box<System>>, entity: Entity) {
-    if let Some(ref entity) = entity.as_ref() {
-        for system in systems.iter_mut() {
-            system.update(entity);
-        }
+    for system in systems.iter_mut() {
+        system.update(entity);
+    }
 
-        for child in entity.children() {
-            update_entity(systems, child);
-        }
+    for child in entity.children() {
+        update_entity(systems, child);
     }
 }
 
 fn post_update_entity(systems: &mut Vec<Box<System>>, entity: Entity) {
-    if let Some(ref entity) = entity.as_ref() {
-        for system in systems.iter_mut() {
-            system.post_update(entity);
-        }
+    for system in systems.iter_mut() {
+        system.post_update(entity);
+    }
 
-        for child in entity.children() {
-            post_update_entity(systems, child);
-        }
+    for child in entity.children() {
+        post_update_entity(systems, child);
     }
 }

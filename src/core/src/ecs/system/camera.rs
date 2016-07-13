@@ -1,6 +1,6 @@
 use super::System;
 
-use ecs::EntityRef;
+use ecs::Entity;
 use ecs::component::Camera;
 
 use renderer;
@@ -12,7 +12,7 @@ impl System for CameraSystem {
         renderer::clear_camera();
     }
 
-    fn post_update(&mut self, entity: &EntityRef) {
+    fn post_update(&mut self, entity: Entity) {
         if let Some(camera) = entity.component::<Camera>() {
             let trans = entity.transform_to_world();
             let camera = camera.read();

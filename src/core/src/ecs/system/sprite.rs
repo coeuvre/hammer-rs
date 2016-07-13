@@ -1,6 +1,6 @@
 use super::System;
 
-use ecs::EntityRef;
+use ecs::Entity;
 use ecs::component::Sprite;
 
 use math::*;
@@ -18,7 +18,7 @@ impl SpriteSystem {
 }
 
 impl System for SpriteSystem {
-    fn update(&mut self, entity: &EntityRef) {
+    fn update(&mut self, entity: Entity) {
         if let Some(sprite) = entity.component::<Sprite>() {
             let trans = entity.transform_to_world();
             renderer::set_transform(trans);

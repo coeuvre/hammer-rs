@@ -41,7 +41,15 @@ impl Animation {
         self.wrap_mode
     }
 
+    pub fn set_wrap_mode(&mut self, wrap_mode: WrapMode) {
+        self.wrap_mode = wrap_mode;
+    }
+
     pub fn fps(&self) -> u16 {
         self.fps
+    }
+
+    pub fn set_fps(&mut self, fps: u16) {
+        self.fps = fps;
     }
 }

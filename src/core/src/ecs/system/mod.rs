@@ -10,13 +10,13 @@ pub mod behaviour;
 
 pub mod sprite;
 
-use ecs::EntityRef;
+use ecs::Entity;
 
 pub trait System {
-    fn start(&mut self, _entity: &EntityRef) {}
+    fn start(&mut self, _entity: Entity) {}
 
     fn frame_begin(&mut self) {}
-    fn update(&mut self, _entity: &EntityRef) {}
-    fn post_update(&mut self, _entity: &EntityRef) {}
+    fn update(&mut self, _entity: Entity) {}
+    fn post_update(&mut self, _entity: Entity) {}
     fn frame_end(&mut self) {}
 }

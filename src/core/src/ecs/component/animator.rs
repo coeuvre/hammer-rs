@@ -1,4 +1,4 @@
-use asset::{asset, Animation, AnimationRef, Frame};
+use asset::{asset, Animation, AnimationRef, Frame, WrapMode};
 
 use super::Component;
 
@@ -37,7 +37,15 @@ impl Animator {
                 self.frame_index += 1;
             }
 
-            self.frame_index = self.frame_index % animation.read().frames().len();
+            let frame_len = animation.read().frames().len();
+            match animation.read().wrap_mode() {
+                WrapMode::Once => {
+                    self.frame_index = ::std::cmp::min(self.frame_index, frame_len - 1);
+                }
+                WrapMode::Loop => {
+                    self.frame_index = self.frame_index % frame_len;
+                }
+            }
         }
     }
 

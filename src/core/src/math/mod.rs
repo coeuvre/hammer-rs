@@ -12,6 +12,19 @@ impl Vector {
     pub fn zero() -> Vector {
         Vector { x: 0.0, y: 0.0 }
     }
+
+    pub fn len_sq(&self) -> Scalar {
+        self.x * self.x + self.y * self.y
+    }
+
+    pub fn len(&self) -> Scalar {
+        self.len_sq().sqrt()
+    }
+
+    pub fn normalized(&self) -> Vector {
+        let len = self.len();
+        vector(self.x / len, self.y / len)
+    }
 }
 
 #[inline(always)]
@@ -48,6 +61,14 @@ impl Mul<Scalar> for Vector {
 
     fn mul(self, rhs: Scalar) -> Vector {
         vector(self.x * rhs, self.y * rhs)
+    }
+}
+
+impl Mul<Vector> for Scalar {
+    type Output = Vector;
+
+    fn mul(self, rhs: Vector) -> Vector {
+        vector(self * rhs.x, self * rhs.y)
     }
 }
 
@@ -227,14 +248,14 @@ impl Transform {
         vector(self.x, self.y)
     }
 
-    pub fn set_position(&mut self, x: Scalar, y: Scalar) {
-        self.x = x;
-        self.y = y;
+    pub fn set_position(&mut self, position: Vector) {
+        self.x = position.x;
+        self.y = position.y;
     }
 
-    pub fn offset_by(&mut self, x: Scalar, y: Scalar) {
-        self.x += x;
-        self.y += y;
+    pub fn offset_by(&mut self, offset: Vector) {
+        self.x += offset.x;
+        self.y += offset.y;
     }
 
     pub fn rotate_by(&mut self, rad: Scalar) {

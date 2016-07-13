@@ -32,7 +32,11 @@ impl Entity {
         entity
     }
 
-    pub fn as_ref(&self) -> Option<EntityRef> {
+    pub fn destroy(self) {
+        WORLD.with(|world| world.destroy_entity(self))
+    }
+
+    fn as_ref(&self) -> Option<EntityRef> {
         WORLD.with(|world| world.entity_ref(self))
     }
 
@@ -62,6 +66,10 @@ impl Entity {
         self.as_ref().and_then(|entity| entity.parent())
     }
 
+    pub fn children(&self) -> Vec<Entity> {
+        self.as_ref().map(|entity| entity.children()).unwrap_or(Vec::new())
+    }
+
     pub fn component<C: Component>(&self) -> Option<ComponentRef<C>> {
         self.as_ref().and_then(|entity| entity.component::<C>())
     }
@@ -72,7 +80,7 @@ impl Entity {
 }
 
 #[derive(Clone)]
-pub struct EntityRef {
+struct EntityRef {
     storage: Rc<RefCell<EntityStorage>>,
 }
 
@@ -146,7 +154,7 @@ impl EntityStorage {
             let child_id = entity.id();
             for child in self.children() {
                 if child.id() == child_id {
-                    return Err("Entity with id {} already exists.".into());
+                    return Err(format!("Entity with id {} already exists.", child_id).into());
                 }
             }
             entity_ref.write().parent = Some(self.entity);
@@ -205,5 +213,26 @@ impl World {
     pub fn entity_ref(&self, entity: &Entity) -> Option<EntityRef> {
         let entities = self.entities.borrow();
         entities.get(entity).cloned()
+    }
+
+    pub fn destroy_entity(&self, entity: Entity) {
+        if let Some(parent) = entity.parent() {
+            if let Some(parent) = parent.as_ref() {
+                let mut parent = parent.write();
+                parent.children = parent.children.clone().into_iter().filter(|&child| child != entity).collect();
+            }
+        }
+
+        self.destroy_child(entity);
+    }
+
+    fn destroy_child(&self, entity: Entity) {
+        let entity_ref = self.entities.borrow_mut().remove(&entity);
+
+        if let Some(entity_ref) =  entity_ref {
+            for child in entity_ref.children() {
+                self.destroy_child(child);
+            }
+        }
     }
 }
