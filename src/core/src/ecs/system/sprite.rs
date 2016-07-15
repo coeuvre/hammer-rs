@@ -19,15 +19,14 @@ impl SpriteSystem {
 
 impl System for SpriteSystem {
     fn update(&mut self, entity: Entity) {
-        if let Some(sprite) = entity.component::<Sprite>() {
+        entity.with(|sprite: &Sprite| {
             let trans = entity.transform_to_world();
             renderer::set_transform(trans);
-            let sprite = sprite.read();
             if let Some(frame) = sprite.frame() {
                 let anchor = frame.anchor() % frame.region().size();
                 let order = RenderOrder::new(sprite.layer(), sprite.order());
                 renderer::rect(Rect::with_min_size(-anchor, frame.region().size())).texture(frame).push(order);
             }
-        }
+        });
     }
 }

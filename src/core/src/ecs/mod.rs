@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::cell::{Ref, RefMut, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use typemap::{TypeMap, Key};
@@ -11,8 +11,7 @@ use math::*;
 
 use util::counter::Counter;
 
-use self::component::{Component, ComponentRef};
-use self::system::behaviour::{Behaviour, BehaviourDelegate};
+use self::component::Component;
 
 pub mod component;
 pub mod system;
@@ -36,22 +35,16 @@ impl Entity {
         WORLD.with(|world| world.destroy_entity(self))
     }
 
-    fn as_ref(&self) -> Option<EntityRef> {
-        WORLD.with(|world| world.entity_ref(self))
+    fn get(&self) -> Option<Rc<EntityStorage>> {
+        WORLD.with(|world| world.get_entity(self))
     }
 
     pub fn add_component<C: Component>(&self, component: C) {
-        if let Some(entity) = self.as_ref() {
-            entity.add_component(component);
-        }
-    }
-
-    pub fn add_behaviour<B: Behaviour + 'static>(&self, behaviour: B) {
-        self.add_component(BehaviourDelegate::new(behaviour));
+        self.get().map(|entity| entity.add_component(component));
     }
 
     pub fn add_child(&self, child: Entity) -> Result<(), Error> {
-        if let Some(this) = self.as_ref() {
+        if let Some(this) = self.get() {
             this.add_child(child)
         } else {
             Err("Entity does not exists.".into())
@@ -59,114 +52,111 @@ impl Entity {
     }
 
     pub fn id(&self) -> String {
-        self.as_ref().map(|entity| entity.id()).unwrap_or("".to_string())
+        self.get().map(|entity| entity.id().to_string()).unwrap_or("".to_string())
     }
 
     pub fn parent(&self) -> Option<Entity> {
-        self.as_ref().and_then(|entity| entity.parent())
+        self.get().and_then(|entity| entity.parent())
+    }
+
+    pub fn with<F, R, C>(&self, f: F) -> Option<R> where F: FnOnce(&C) -> R, C: Component {
+        self.get().and_then(|entity| entity.with(f))
+    }
+
+    pub fn with_mut<F, R, C>(&self, f: F) -> Option<R> where F: FnOnce(&mut C) -> R, C: Component {
+        self.get().and_then(|entity| entity.with_mut(f))
     }
 
     pub fn children(&self) -> Vec<Entity> {
-        self.as_ref().map(|entity| entity.children()).unwrap_or(Vec::new())
+        self.get().map(|entity| entity.children()).unwrap_or(Vec::new())
     }
 
-    pub fn component<C: Component>(&self) -> Option<ComponentRef<C>> {
-        self.as_ref().and_then(|entity| entity.component::<C>())
+    pub fn on_start<F: Fn(Entity) + 'static>(&self, handler: F) {
+        self.get().map(|entity| entity.on_start(handler));
     }
 
-    pub fn transform_to_world(&self) -> Transform {
-        self.as_ref().map(|entity| entity.transform_to_world()).unwrap_or(Transform::identity())
-    }
-}
-
-#[derive(Clone)]
-struct EntityRef {
-    storage: Rc<RefCell<EntityStorage>>,
-}
-
-impl EntityRef {
-    fn new(storage: EntityStorage) -> EntityRef {
-        EntityRef {
-            storage: Rc::new(RefCell::new(storage)),
-        }
+    pub fn start(&self) {
+        self.get().map(|entity| entity.start());
     }
 
-    pub fn read(&self) -> Ref<EntityStorage> {
-        self.storage.borrow()
+    pub fn on_update<F: Fn(Entity) + 'static>(&self, handler: F) {
+        self.get().map(|entity| entity.on_update(handler));
     }
 
-    pub fn write(&self) -> RefMut<EntityStorage> {
-        self.storage.borrow_mut()
+    pub fn update(&self) {
+        self.get().map(|entity| entity.update());
     }
 
-    pub fn add_component<C: Component>(&self, component: C) {
-        self.write().add_component(component);
+    pub fn on_post_update<F: Fn(Entity) + 'static>(&self, handler: F) {
+        self.get().map(|entity| entity.on_post_update(handler));
     }
 
-    pub fn add_child(&self, child: Entity) -> Result<(), Error> {
-        self.write().add_child(child)
-    }
-
-    pub fn component<C: Component>(&self) -> Option<ComponentRef<C>> {
-        self.read().component::<C>()
-    }
-
-    pub fn id(&self) -> String {
-        self.read().id().to_string()
-    }
-
-    pub fn parent(&self) -> Option<Entity> {
-        self.read().parent()
-    }
-
-    pub fn children(&self) -> Vec<Entity> {
-        self.read().children().to_vec()
+    pub fn post_update(&self) {
+        self.get().map(|entity| entity.post_update());
     }
 
     pub fn transform_to_world(&self) -> Transform {
-        let transform = self.component::<Transform>().map(|transform| *transform.read()).unwrap_or(Transform::identity());
-        let parent = self.parent().map(|parent| parent.transform_to_world());
-        parent.map(|parent| transform * parent).unwrap_or(transform)
+        self.get().map(|entity| entity.transform_to_world()).unwrap_or(Transform::identity())
     }
 }
+
 
 pub struct EntityStorage {
     entity: Entity,
+
     id: String,
-    parent: Option<Entity>,
-    children: Vec<Entity>,
-    components: TypeMap,
+    parent: RefCell<Option<Entity>>,
+    children: RefCell<Vec<Entity>>,
+    components: RefCell<TypeMap>,
+
+    start_handlers: RefCell<Vec<Box<Fn(Entity)>>>,
+    update_handlers: RefCell<Vec<Box<Fn(Entity)>>>,
+    post_update_handlers: RefCell<Vec<Box<Fn(Entity)>>>,
 }
 
 impl EntityStorage {
     pub fn new(entity: Entity, id: String) -> EntityStorage {
         EntityStorage {
             entity: entity,
+
             id: id,
-            parent: None,
-            children: Vec::new(),
-            components: TypeMap::new(),
+            parent: RefCell::new(None),
+            children: RefCell::new(Vec::new()),
+            components: RefCell::new(TypeMap::new()),
+
+            start_handlers: RefCell::new(Vec::new()),
+            update_handlers: RefCell::new(Vec::new()),
+            post_update_handlers: RefCell::new(Vec::new()),
         }
     }
 
-    pub fn add_child(&mut self, entity: Entity) -> Result<(), Error> {
-        if let Some(entity_ref) = entity.as_ref() {
+    pub fn add_child(&self, entity: Entity) -> Result<(), Error> {
+        if let Some(storage) = entity.get() {
             let child_id = entity.id();
-            for child in self.children() {
-                if child.id() == child_id {
-                    return Err(format!("Entity with id {} already exists.", child_id).into());
-                }
+            if self.has_child(&child_id) {
+                Err(format!("Entity with id {} already exists.", child_id).into())
+            } else {
+                *storage.parent.borrow_mut() = Some(self.entity);
+                self.children.borrow_mut().push(entity);
+                Ok(())
             }
-            entity_ref.write().parent = Some(self.entity);
-            self.children.push(entity);
-            Ok(())
         } else {
             Err("Entity does not exists.".into())
         }
     }
 
-    pub fn add_component<C: Component>(&mut self, component: C) {
-        self.components.insert::<ComponentTypeMapKey<C>>(ComponentRef::new(component));
+    fn has_child(&self, id: &str) -> bool {
+        for child in self.children.borrow().iter() {
+            if child.id() == id {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    pub fn add_component<C: Component>(&self, component: C) {
+        self.components.borrow_mut().insert::<ComponentTypeMapKey<C>>(Rc::new(RefCell::new(component)));
     }
 
     pub fn id(&self) -> &str {
@@ -174,15 +164,57 @@ impl EntityStorage {
     }
 
     pub fn parent(&self) -> Option<Entity> {
-        self.parent
+        *self.parent.borrow()
     }
 
-    pub fn children(&self) -> &[Entity] {
-        self.children.as_ref()
+    pub fn children(&self) -> Vec<Entity> {
+        self.children.borrow().clone()
     }
 
-    pub fn component<C: Component>(&self) -> Option<ComponentRef<C>> {
-        self.components.get::<ComponentTypeMapKey<C>>().cloned()
+    pub fn with<F, R, C>(&self, f: F) -> Option<R> where F: FnOnce(&C) -> R, C: Component {
+        let component = self.components.borrow().get::<ComponentTypeMapKey<C>>().cloned();
+        component.map(|component| f(&*component.borrow()))
+    }
+
+    pub fn with_mut<F, R, C>(&self, f: F) -> Option<R> where F: FnOnce(&mut C) -> R, C: Component {
+        let component = self.components.borrow().get::<ComponentTypeMapKey<C>>().cloned();
+        component.map(|component| f(&mut *component.borrow_mut()))
+    }
+
+    pub fn on_start<F: Fn(Entity) + 'static>(&self, handler: F) {
+        self.start_handlers.borrow_mut().push(Box::new(handler));
+    }
+
+    pub fn start(&self) {
+        for handler in self.start_handlers.borrow().iter() {
+            handler(self.entity);
+        }
+    }
+
+    pub fn on_update<F: Fn(Entity) + 'static>(&self, handler: F) {
+        self.update_handlers.borrow_mut().push(Box::new(handler));
+    }
+
+    pub fn update(&self) {
+        for handler in self.update_handlers.borrow().iter() {
+            handler(self.entity);
+        }
+    }
+
+    pub fn on_post_update<F: Fn(Entity) + 'static>(&self, handler: F) {
+        self.post_update_handlers.borrow_mut().push(Box::new(handler));
+    }
+
+    pub fn post_update(&self) {
+        for handler in self.post_update_handlers.borrow().iter() {
+            handler(self.entity);
+        }
+    }
+
+    pub fn transform_to_world(&self) -> Transform {
+        let transform = self.with(|trans| *trans).unwrap_or(Transform::identity());
+        let parent = self.parent().map(|parent| parent.transform_to_world());
+        parent.map(|parent| transform * parent).unwrap_or(transform)
     }
 }
 
@@ -191,11 +223,11 @@ struct ComponentTypeMapKey<C: Component> {
 }
 
 impl<C: Component> Key for ComponentTypeMapKey<C> {
-    type Value = ComponentRef<C>;
+    type Value = Rc<RefCell<C>>;
 }
 
 struct World {
-    entities: RefCell<HashMap<Entity, EntityRef>>,
+    entities: RefCell<HashMap<Entity, Rc<EntityStorage>>>,
 }
 
 impl World {
@@ -207,19 +239,19 @@ impl World {
 
     pub fn insert_entity(&self, entity: Entity, storage: EntityStorage) {
         let mut entities = self.entities.borrow_mut();
-        entities.insert(entity, EntityRef::new(storage));
+        entities.insert(entity, Rc::new(storage));
     }
 
-    pub fn entity_ref(&self, entity: &Entity) -> Option<EntityRef> {
+    pub fn get_entity(&self, entity: &Entity) -> Option<Rc<EntityStorage>> {
         let entities = self.entities.borrow();
         entities.get(entity).cloned()
     }
 
     pub fn destroy_entity(&self, entity: Entity) {
         if let Some(parent) = entity.parent() {
-            if let Some(parent) = parent.as_ref() {
-                let mut parent = parent.write();
-                parent.children = parent.children.clone().into_iter().filter(|&child| child != entity).collect();
+            if let Some(parent) = parent.get() {
+                let mut children = parent.children.borrow_mut();
+                *children = children.clone().into_iter().filter(|&child| child != entity).collect();
             }
         }
 
@@ -227,10 +259,10 @@ impl World {
     }
 
     fn destroy_child(&self, entity: Entity) {
-        let entity_ref = self.entities.borrow_mut().remove(&entity);
+        let storage = self.entities.borrow_mut().remove(&entity);
 
-        if let Some(entity_ref) =  entity_ref {
-            for child in entity_ref.children() {
+        if let Some(storage) = storage {
+            for child in storage.children().into_iter() {
                 self.destroy_child(child);
             }
         }

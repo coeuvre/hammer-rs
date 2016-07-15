@@ -93,10 +93,10 @@ pub fn run(scene: Scene, mut pre_render_systems: Vec<Box<System>>, mut render_sy
             None => break 'game_loop,
         }
 
-        // {
-        //     let elapsed = frame_start.elapsed();
-        //     info!("Frame time {} ms", ((elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1_000_000_000.0) * 1000.0) as u32);
-        // }
+        {
+            let elapsed = frame_start.elapsed();
+            info!("Frame time {} ms", ((elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1_000_000_000.0) * 1000.0) as u32);
+        }
 
         if frame_time > frame_start.elapsed() {
             std::thread::sleep(frame_time - frame_start.elapsed());
@@ -109,7 +109,7 @@ fn start_entity(systems: &mut Vec<Box<System>>, entity: Entity) {
         system.start(entity);
     }
 
-    for child in entity.children() {
+    for child in entity.children().into_iter() {
         start_entity(systems, child);
     }
 }
@@ -131,7 +131,7 @@ fn update_entity(systems: &mut Vec<Box<System>>, entity: Entity) {
         system.update(entity);
     }
 
-    for child in entity.children() {
+    for child in entity.children().into_iter() {
         update_entity(systems, child);
     }
 }
@@ -141,7 +141,7 @@ fn post_update_entity(systems: &mut Vec<Box<System>>, entity: Entity) {
         system.post_update(entity);
     }
 
-    for child in entity.children() {
+    for child in entity.children().into_iter() {
         post_update_entity(systems, child);
     }
 }

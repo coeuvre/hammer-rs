@@ -16,12 +16,12 @@ impl AnimationSystem {
 
 impl System for AnimationSystem {
     fn update(&mut self, entity: Entity) {
-        if let Some(animator) = entity.component::<Animator>() {
-            animator.write().advance(input::delta());
+        entity.with_mut(|animator: &mut Animator| {
+            animator.advance(input::delta());
 
-            if let Some(sprite) = entity.component::<Sprite>() {
-                sprite.write().set_frame(animator.read().current_frame());
-            }
-        }
+            entity.with_mut(|sprite: &mut Sprite| {
+                sprite.set_frame(animator.current_frame());
+            });
+        });
     }
 }
