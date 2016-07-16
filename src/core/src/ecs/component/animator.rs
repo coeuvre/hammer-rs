@@ -1,11 +1,12 @@
 use asset::{asset, Animation, AnimationRef, Frame, WrapMode};
 
 use super::Component;
+use math::Scalar;
 
 #[derive(Clone, Default)]
 pub struct Animator {
     animation: Option<AnimationRef>,
-    time: f32,
+    time: Scalar,
     frame_index: usize,
 }
 
@@ -26,12 +27,12 @@ impl Animator {
         self.frame_index = 0;
     }
 
-    pub fn advance(&mut self, delta: f32) {
+    pub fn advance(&mut self, delta: Scalar) {
         if let Some(ref animation) = self.animation {
             self.time += delta;
 
             let fps = animation.read().fps();
-            let spf = 1.0 / fps as f32;
+            let spf = 1.0 / fps as Scalar;
             while self.time > spf {
                 self.time -= spf;
                 self.frame_index += 1;

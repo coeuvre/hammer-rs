@@ -22,7 +22,7 @@ impl Texture {
 
         let (w, h) = image.size();
         let data = image.data();
-        let size = vector(w as f32, h as f32);
+        let size = vector(w as Scalar, h as Scalar);
 
         unsafe {
             gl::GenTextures(1, &mut id);

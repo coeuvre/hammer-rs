@@ -20,6 +20,8 @@ thread_local!(static WORLD: World = World::new());
 
 thread_local!(static COUNTER: Counter<usize> = Counter::new(0));
 
+pub trait Event: Key {}
+
 #[derive(Hash, Eq, PartialEq, Copy, Clone)]
 pub struct Entity(usize);
 
@@ -95,13 +97,21 @@ impl Entity {
         self.get().map(|entity| entity.post_update());
     }
 
+    pub fn on_event<E: Event, F: Fn(Entity, &E, Entity) + 'static>(&self, handler: F) {
+        self.get().map(|entity| entity.on_event(handler));
+    }
+
+    pub fn send<E: Event>(&self, event: E, recv: Entity) {
+        recv.get().map(|recv| recv.recv(event, *self));
+    }
+
     pub fn transform_to_world(&self) -> Transform {
         self.get().map(|entity| entity.transform_to_world()).unwrap_or(Transform::identity())
     }
 }
 
 
-pub struct EntityStorage {
+struct EntityStorage {
     entity: Entity,
 
     id: String,
@@ -112,6 +122,8 @@ pub struct EntityStorage {
     start_handlers: RefCell<Vec<Box<Fn(Entity)>>>,
     update_handlers: RefCell<Vec<Box<Fn(Entity)>>>,
     post_update_handlers: RefCell<Vec<Box<Fn(Entity)>>>,
+
+    event_handlers: RefCell<TypeMap>,
 }
 
 impl EntityStorage {
@@ -127,6 +139,8 @@ impl EntityStorage {
             start_handlers: RefCell::new(Vec::new()),
             update_handlers: RefCell::new(Vec::new()),
             post_update_handlers: RefCell::new(Vec::new()),
+
+            event_handlers: RefCell::new(TypeMap::new()),
         }
     }
 
@@ -211,6 +225,21 @@ impl EntityStorage {
         }
     }
 
+    pub fn on_event<E: Event, F: Fn(Entity, &E, Entity) + 'static>(&self, handler: F) {
+        let mut event_handlers = self.event_handlers.borrow_mut();
+        let mut handlers = event_handlers.entry::<EventTypeMapKey<E>>().or_insert(Vec::new());
+        handlers.push(Box::new(handler));
+    }
+
+    pub fn recv<E: Event>(&self, event: E, send: Entity) {
+        let event_handlers = self.event_handlers.borrow();
+        if let Some(handlers) = event_handlers.get::<EventTypeMapKey<E>>() {
+            for handler in handlers.iter() {
+                handler(self.entity, &event, send);
+            }
+        }
+    }
+
     pub fn transform_to_world(&self) -> Transform {
         let transform = self.with(|trans| *trans).unwrap_or(Transform::identity());
         let parent = self.parent().map(|parent| parent.transform_to_world());
@@ -224,6 +253,14 @@ struct ComponentTypeMapKey<C: Component> {
 
 impl<C: Component> Key for ComponentTypeMapKey<C> {
     type Value = Rc<RefCell<C>>;
+}
+
+struct EventTypeMapKey<E: Event> {
+    phantom: PhantomData<E>,
+}
+
+impl<E: Event> Key for EventTypeMapKey<E> {
+    type Value = Vec<Box<Fn(Entity, &E, Entity)>>;
 }
 
 struct World {

@@ -1,5 +1,7 @@
 pub mod keyboard;
 
-pub fn delta() -> f32 {
+use math::Scalar;
+
+pub fn delta() -> Scalar {
     1.0 / 60.0
 }

@@ -93,13 +93,11 @@ pub fn run(scene: Scene, mut pre_render_systems: Vec<Box<System>>, mut render_sy
             None => break 'game_loop,
         }
 
-        {
-            let elapsed = frame_start.elapsed();
-            info!("Frame time {} ms", ((elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1_000_000_000.0) * 1000.0) as u32);
-        }
+        let elapsed = frame_start.elapsed();
+        info!("Frame time {} ms", ((elapsed.as_secs() as f64 + elapsed.subsec_nanos() as f64 / 1_000_000_000.0) * 1000.0) as u32);
 
-        if frame_time > frame_start.elapsed() {
-            std::thread::sleep(frame_time - frame_start.elapsed());
+        if frame_time > elapsed {
+            std::thread::sleep(frame_time - elapsed);
         }
     }
 }

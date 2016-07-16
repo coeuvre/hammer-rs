@@ -17,7 +17,7 @@ impl Sprite {
         let image = asset::<Image>::load(path).ok();
         let frame = image.map(|image| {
             let (w, h) = image.read().size();
-            Frame::new(image, Rect::with_min_size(Vector::zero(), vector(w as f32, h as f32)))
+            Frame::new(image, Rect::with_min_size(Vector::zero(), vector(w as Scalar, h as Scalar)))
         });
         Sprite {
             frame: frame,
@@ -36,7 +36,7 @@ impl Sprite {
 
     pub fn with_image(image: ImageRef) -> Sprite {
         let (w, h) = image.read().size();
-        let frame = Frame::new(image, Rect::with_min_size(Vector::zero(), vector(w as f32, h as f32)));
+        let frame = Frame::new(image, Rect::with_min_size(Vector::zero(), vector(w as Scalar, h as Scalar)));
         Sprite {
             frame: Some(frame),
             layer: 0,

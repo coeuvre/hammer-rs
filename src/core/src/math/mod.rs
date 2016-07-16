@@ -284,9 +284,9 @@ impl Transform {
 
     pub fn to_gl_mat3(&self) -> [f32; 9] {
         [
-            self.a, self.b, 0.0,
-            self.c, self.d, 0.0,
-            self.x, self.y, 1.0,
+            self.a as f32, self.b as f32, 0.0,
+            self.c as f32, self.d as f32, 0.0,
+            self.x as f32, self.y as f32, 1.0,
         ]
     }
 }
