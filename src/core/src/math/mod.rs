@@ -134,6 +134,10 @@ impl Rect {
         }
     }
 
+    pub fn with_size(size: Vector) -> Rect {
+        Rect::with_center_size(Vector::zero(), size)
+    }
+
     pub fn min(&self) -> Vector {
         self.min
     }
@@ -160,6 +164,23 @@ impl Rect {
 
     pub fn top(&self) -> Scalar {
         self.max.y
+    }
+
+    pub fn offset(&self, offset: Vector) -> Rect {
+        Rect::with_min_max(self.min + offset, self.max + offset)
+    }
+
+    pub fn intersect(&self, other: &Rect) -> Option<Rect> {
+        let min = vector(if self.min.x < other.min.x { other.min.x } else { self.min.x },
+                         if self.min.y < other.min.y { other.min.y } else { self.min.y });
+        let max = vector(if self.max.x > other.max.x { other.max.x } else { self.max.x },
+                         if self.max.y > other.max.y { other.max.y } else { self.max.y });
+
+        if min.x < max.x && min.y < max.y {
+            Some(Rect::with_min_max(min, max))
+        } else {
+            None
+        }
     }
 }
 

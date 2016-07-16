@@ -12,15 +12,15 @@ use math::*;
 use util::counter::Counter;
 
 use self::component::Component;
+use self::event::Event;
 
 pub mod component;
 pub mod system;
+pub mod event;
 
 thread_local!(static WORLD: World = World::new());
 
 thread_local!(static COUNTER: Counter<usize> = Counter::new(0));
-
-pub trait Event: Key {}
 
 #[derive(Hash, Eq, PartialEq, Copy, Clone)]
 pub struct Entity(usize);
@@ -31,6 +31,10 @@ impl Entity {
         let storage = EntityStorage::new(entity, id.into());
         WORLD.with(|world| world.insert_entity(entity, storage));
         entity
+    }
+
+    pub fn all() -> Vec<Entity> {
+        WORLD.with(|world| world.all_entities())
     }
 
     pub fn destroy(self) {
@@ -272,6 +276,10 @@ impl World {
         World {
             entities: RefCell::new(HashMap::new()),
         }
+    }
+
+    pub fn all_entities(&self) -> Vec<Entity> {
+        self.entities.borrow().keys().cloned().collect()
     }
 
     pub fn insert_entity(&self, entity: Entity, storage: EntityStorage) {

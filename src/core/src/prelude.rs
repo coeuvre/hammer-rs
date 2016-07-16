@@ -7,4 +7,5 @@ pub use input;
 pub use input::keyboard::Key;
 pub use ecs::*;
 pub use ecs::component::*;
+pub use ecs::event::*;
 pub use ecs::system::System;

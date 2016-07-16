@@ -1,14 +1,16 @@
 pub use self::animation::AnimationSystem;
 pub use self::camera::CameraSystem;
 pub use self::behaviour::BehaviourSystem;
+pub use self::collision::CollisionSystem;
 
 pub use self::sprite::SpriteSystem;
 
-pub mod animation;
-pub mod camera;
-pub mod behaviour;
+mod animation;
+mod camera;
+mod behaviour;
+mod collision;
 
-pub mod sprite;
+mod sprite;
 
 use ecs::Entity;
 

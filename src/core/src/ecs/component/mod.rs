@@ -5,10 +5,12 @@ use math::Transform;
 pub use self::sprite::Sprite;
 pub use self::animator::Animator;
 pub use self::camera::Camera;
+pub use self::collider::Collider;
 
-pub mod sprite;
-pub mod camera;
-pub mod animator;
+mod sprite;
+mod camera;
+mod animator;
+mod collider;
 
 pub trait Component: Any {}
 
