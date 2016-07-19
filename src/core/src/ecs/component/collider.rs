@@ -20,13 +20,13 @@ impl Collider {
         }
     }
 
-    pub fn test(&self, other: &Collider) -> bool {
+    pub fn test(&self, other: &Collider) -> Option<String> {
         for group in self.group.iter() {
-            if let Some(_) = other.mask.iter().position(|mask| group == mask) {
-                return true;
+            if let Some(group) = other.mask.iter().find(|&mask| group == mask) {
+                return Some(group.to_string());
             }
         }
 
-        false
+        None
     }
 }

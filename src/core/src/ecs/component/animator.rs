@@ -50,6 +50,25 @@ impl Animator {
         }
     }
 
+    pub fn finished(&self) -> bool {
+        let frame_index = self.frame_index;
+        self.animation.as_ref().map(|animation| {
+            let frame_len = animation.read().frames().len();
+            match animation.read().wrap_mode() {
+                WrapMode::Once => {
+                    if  frame_index == frame_len - 1 {
+                        true
+                    } else {
+                        false
+                    }
+                }
+                WrapMode::Loop => {
+                    false
+                }
+            }
+        }).unwrap_or(false)
+    }
+
     pub fn current_frame(&self) -> Option<Frame> {
         self.animation.as_ref().and_then(|animation| animation.read().frames().get(self.frame_index).cloned())
     }

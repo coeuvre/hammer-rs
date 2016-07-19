@@ -15,13 +15,13 @@ impl CollisionSystem {
 
 impl System for CollisionSystem {
     fn update(&mut self, entity: Entity) {
-        let mut collided = None;
+        let mut collision = None;
 
         entity.with(|collider: &Collider| {
             for other in Entity::all() {
                 if entity != other {
                     other.with(|other_collider: &Collider| {
-                        if collider.test(other_collider) {
+                        if let Some(group) = collider.test(other_collider) {
                             let this_offset = entity.transform_to_world().position();
                             let other_offset = other.transform_to_world().position();
 
@@ -29,7 +29,10 @@ impl System for CollisionSystem {
                             let other_rect = other_collider.shape.offset(other_offset);
 
                             if let Some(_) = this_rect.intersect(&other_rect) {
-                                collided = Some(other);
+                                collision = Some(Collision {
+                                    other: other,
+                                    group: group,
+                                });
                             }
                         }
                     });
@@ -37,8 +40,9 @@ impl System for CollisionSystem {
             }
         });
 
-        if let Some(other) = collided {
-            other.send(Collision {}, entity);
+        if let Some(collision) = collision {
+            let other = collision.other;
+            other.send(collision, entity);
         }
     }
 }
