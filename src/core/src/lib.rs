@@ -60,6 +60,8 @@ pub fn run(scene: Scene, mut pre_render_systems: Vec<Box<System>>, mut render_sy
             }
         }
 
+        WORLD.with(|world| world.update(input::delta()));
+
         match scene::top() {
             Some(scene) => {
                 if !started_scene.contains(scene.read().id()) {

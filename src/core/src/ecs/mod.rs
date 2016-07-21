@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::any::TypeId;
+use std::mem;
 
 use typemap::{TypeMap, Key};
 
@@ -18,11 +20,11 @@ pub mod component;
 pub mod system;
 pub mod event;
 
-thread_local!(static WORLD: World = World::new());
+thread_local!(pub static WORLD: World = World::new());
 
 thread_local!(static COUNTER: Counter<usize> = Counter::new(0));
 
-#[derive(Hash, Eq, PartialEq, Copy, Clone)]
+#[derive(Hash, Eq, PartialEq, Copy, Clone, Debug)]
 pub struct Entity(usize);
 
 impl Entity {
@@ -106,7 +108,25 @@ impl Entity {
     }
 
     pub fn send<E: Event>(&self, event: E, recv: Entity) {
-        recv.get().map(|recv| recv.recv(event, *self));
+        recv.get().map(|recv| {
+            let ty = TypeId::of::<E>();
+            recv.recv_by_type(ty, unsafe { mem::transmute(&event) }, *self)
+        });
+    }
+
+    pub fn send_after<E: Event>(&self, event: E, recv: Entity, time: Scalar) {
+        let event = SentEvent {
+            sender: *self,
+            receiver: recv,
+            ty: TypeId::of::<E>(),
+            event: Box::into_raw(Box::new(event)) as *const (),
+            time: time,
+        };
+        WORLD.with(|world| world.send_event(event))
+    }
+
+    pub fn send_by_type(&self, ty: TypeId, event: *const (), recv: Entity) {
+        recv.get().map(|recv| recv.recv_by_type(ty, event, *self));
     }
 
     pub fn transform_to_world(&self) -> Transform {
@@ -127,7 +147,7 @@ struct EntityStorage {
     update_handlers: RefCell<Vec<Box<Fn(Entity)>>>,
     post_update_handlers: RefCell<Vec<Box<Fn(Entity)>>>,
 
-    event_handlers: RefCell<TypeMap>,
+    event_handlers: RefCell<HashMap<TypeId, Vec<Box<Fn(Entity, *const (), Entity)>>>>,
 }
 
 impl EntityStorage {
@@ -144,7 +164,7 @@ impl EntityStorage {
             update_handlers: RefCell::new(Vec::new()),
             post_update_handlers: RefCell::new(Vec::new()),
 
-            event_handlers: RefCell::new(TypeMap::new()),
+            event_handlers: RefCell::new(HashMap::new()),
         }
     }
 
@@ -231,15 +251,16 @@ impl EntityStorage {
 
     pub fn on_event<E: Event, F: Fn(Entity, &E, Entity) + 'static>(&self, handler: F) {
         let mut event_handlers = self.event_handlers.borrow_mut();
-        let mut handlers = event_handlers.entry::<EventTypeMapKey<E>>().or_insert(Vec::new());
-        handlers.push(Box::new(handler));
+        let mut handlers = event_handlers.entry(TypeId::of::<E>()).or_insert(Vec::new());
+        let handler: Box<Fn(Entity, &E, Entity)> = Box::new(handler);
+        handlers.push(unsafe { mem::transmute(handler) });
     }
 
-    pub fn recv<E: Event>(&self, event: E, send: Entity) {
+    pub fn recv_by_type(&self, ty: TypeId, event: *const (), send: Entity) {
         let event_handlers = self.event_handlers.borrow();
-        if let Some(handlers) = event_handlers.get::<EventTypeMapKey<E>>() {
+        if let Some(handlers) = event_handlers.get(&ty) {
             for handler in handlers.iter() {
-                handler(self.entity, &event, send);
+                handler(self.entity, event, send);
             }
         }
     }
@@ -259,22 +280,45 @@ impl<C: Component> Key for ComponentTypeMapKey<C> {
     type Value = Rc<RefCell<C>>;
 }
 
-struct EventTypeMapKey<E: Event> {
-    phantom: PhantomData<E>,
+#[derive(Clone)]
+pub struct SentEvent {
+    sender: Entity,
+    receiver: Entity,
+    ty: TypeId,
+    event: *const (),
+    time: Scalar,
 }
 
-impl<E: Event> Key for EventTypeMapKey<E> {
-    type Value = Vec<Box<Fn(Entity, &E, Entity)>>;
-}
-
-struct World {
+pub struct World {
     entities: RefCell<HashMap<Entity, Rc<EntityStorage>>>,
+    events: RefCell<Vec<SentEvent>>,
 }
 
 impl World {
     pub fn new() -> World {
         World {
             entities: RefCell::new(HashMap::new()),
+            events: RefCell::new(Vec::new()),
+        }
+    }
+
+    pub fn update(&self, dt: Scalar) {
+        let mut sent_events = Vec::new();
+        {
+            let mut events = self.events.borrow_mut();
+            *events = events.iter().cloned().filter_map(|mut event| {
+                if event.time > dt {
+                    event.time -= dt;
+                    Some(event)
+                } else {
+                    sent_events.push(event);
+                    None
+                }
+            }).collect();
+        }
+
+        for event in sent_events {
+            event.sender.send_by_type(event.ty, event.event, event.receiver);
         }
     }
 
@@ -282,12 +326,17 @@ impl World {
         self.entities.borrow().keys().cloned().collect()
     }
 
-    pub fn insert_entity(&self, entity: Entity, storage: EntityStorage) {
+    fn insert_entity(&self, entity: Entity, storage: EntityStorage) {
         let mut entities = self.entities.borrow_mut();
         entities.insert(entity, Rc::new(storage));
     }
 
-    pub fn get_entity(&self, entity: &Entity) -> Option<Rc<EntityStorage>> {
+    pub fn send_event(&self, event: SentEvent) {
+        let mut events = self.events.borrow_mut();
+        events.push(event);
+    }
+
+    fn get_entity(&self, entity: &Entity) -> Option<Rc<EntityStorage>> {
         let entities = self.entities.borrow();
         entities.get(entity).cloned()
     }

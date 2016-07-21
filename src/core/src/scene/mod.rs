@@ -77,6 +77,22 @@ impl SceneManager {
         stack.pop();
         stack.push(SceneRef::new(scene));
     }
+
+    pub fn get_entity(&self, path: &str) -> Option<Entity> {
+        let components = path.split('/');
+        self.top().map(|scene| {
+            let mut entity = scene.read().root();
+            for component in components {
+                for child in entity.children() {
+                    if component == child.id() {
+                        entity = child;
+                        break;
+                    }
+                }
+            }
+            entity
+        })
+    }
 }
 
 thread_local!(static SCENE_MANAGER: SceneManager = SceneManager::new());
@@ -95,4 +111,8 @@ pub fn pop() {
 
 pub fn switch(scene: Scene) {
     SCENE_MANAGER.with(|scene_manager| scene_manager.switch(scene));
+}
+
+pub fn get_entity(path: &str) -> Option<Entity> {
+    SCENE_MANAGER.with(|scene_manager| scene_manager.get_entity(path))
 }

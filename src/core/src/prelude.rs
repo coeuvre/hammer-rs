@@ -9,3 +9,4 @@ pub use ecs::*;
 pub use ecs::component::*;
 pub use ecs::event::*;
 pub use ecs::system::System;
+pub use util::counter::Counter;
