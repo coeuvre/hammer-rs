@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::any::TypeId;
 use std::mem;
@@ -41,6 +41,14 @@ impl Entity {
 
     pub fn destroy(self) {
         WORLD.with(|world| world.destroy_entity(self))
+    }
+
+    pub fn disable(self) {
+        WORLD.with(|world| world.disable_entity(self))
+    }
+
+    pub fn disabled(self) -> bool {
+        self.get().map(|entity| entity.disabled.get()).unwrap_or(true)
     }
 
     fn get(&self) -> Option<Rc<EntityStorage>> {
@@ -115,13 +123,7 @@ impl Entity {
     }
 
     pub fn send_after<E: Event>(&self, event: E, recv: Entity, time: Scalar) {
-        let event = SentEvent {
-            sender: *self,
-            receiver: recv,
-            ty: TypeId::of::<E>(),
-            event: Box::into_raw(Box::new(event)) as *const (),
-            time: time,
-        };
+        let event = SentEvent::new(*self, event, recv, time);
         WORLD.with(|world| world.send_event(event))
     }
 
@@ -137,6 +139,8 @@ impl Entity {
 
 struct EntityStorage {
     entity: Entity,
+
+    disabled: Cell<bool>,
 
     id: String,
     parent: RefCell<Option<Entity>>,
@@ -154,6 +158,8 @@ impl EntityStorage {
     pub fn new(entity: Entity, id: String) -> EntityStorage {
         EntityStorage {
             entity: entity,
+
+            disabled: Cell::new(false),
 
             id: id,
             parent: RefCell::new(None),
@@ -289,6 +295,24 @@ pub struct SentEvent {
     time: Scalar,
 }
 
+impl SentEvent {
+    pub fn new<E: Event>(sender: Entity, event: E, receiver: Entity, time: Scalar) -> SentEvent {
+        SentEvent {
+            sender: sender,
+            receiver: receiver,
+            ty: TypeId::of::<E>(),
+            event: Box::into_raw(Box::new(event)) as *const (),
+            time: time,
+        }
+    }
+}
+
+impl Drop for SentEvent {
+    fn drop(&mut self) {
+        unsafe { Box::from_raw(self.event as *mut ()) };
+    }
+}
+
 pub struct World {
     entities: RefCell<HashMap<Entity, Rc<EntityStorage>>>,
     events: RefCell<Vec<SentEvent>>,
@@ -339,6 +363,10 @@ impl World {
     fn get_entity(&self, entity: &Entity) -> Option<Rc<EntityStorage>> {
         let entities = self.entities.borrow();
         entities.get(entity).cloned()
+    }
+
+    pub fn disable_entity(&self, entity: Entity) {
+        self.entities.borrow().get(&entity).map(|storage| storage.disabled.set(true));
     }
 
     pub fn destroy_entity(&self, entity: Entity) {

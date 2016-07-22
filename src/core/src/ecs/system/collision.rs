@@ -19,7 +19,7 @@ impl System for CollisionSystem {
 
         entity.with(|collider: &Collider| {
             for other in Entity::all() {
-                if entity != other {
+                if entity != other && !other.disabled() {
                     other.with(|other_collider: &Collider| {
                         if let Some(group) = collider.test(other_collider) {
                             let this_offset = entity.transform_to_world().position();

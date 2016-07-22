@@ -107,7 +107,9 @@ pub fn run(scene: Scene, mut pre_render_systems: Vec<Box<System>>, mut render_sy
 
 fn start_entity(systems: &mut Vec<Box<System>>, entity: Entity) {
     for system in systems.iter_mut() {
-        system.start(entity);
+        if !entity.disabled() {
+            system.start(entity);
+        }
     }
 
     for child in entity.children().into_iter() {
@@ -129,7 +131,9 @@ fn frame_end(systems: &mut Vec<Box<System>>) {
 
 fn update_entity(systems: &mut Vec<Box<System>>, entity: Entity) {
     for system in systems.iter_mut() {
-        system.update(entity);
+        if !entity.disabled() {
+            system.update(entity);
+        }
     }
 
     for child in entity.children().into_iter() {
@@ -139,7 +143,9 @@ fn update_entity(systems: &mut Vec<Box<System>>, entity: Entity) {
 
 fn post_update_entity(systems: &mut Vec<Box<System>>, entity: Entity) {
     for system in systems.iter_mut() {
-        system.post_update(entity);
+        if !entity.disabled() {
+            system.post_update(entity);
+        }
     }
 
     for child in entity.children().into_iter() {
