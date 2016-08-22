@@ -71,6 +71,27 @@ pub trait Drawable {
     fn draw(&self);
 }
 
+pub struct Trans {
+    trans: Transform,
+}
+
+impl Trans {
+    pub fn rect(self, rect: Rect) -> Quad {
+        Quad {
+            rect: rect,
+            trans: self.trans,
+        }
+    }
+
+    pub fn texture<T: gl::AsTexture>(self, texture: &T) -> TexturedQuad<T> {
+        TexturedQuad {
+            texture: texture.clone(),
+            dst: None,
+            trans: self.trans,
+        }
+    }
+}
+
 pub struct Quad {
     rect: Rect,
     trans: Transform,
@@ -80,7 +101,7 @@ impl Quad {
     pub fn texture<T: gl::AsTexture>(self, texture: &T) -> TexturedQuad<T> {
         TexturedQuad {
             texture: texture.clone(),
-            dst: self.rect,
+            dst: Some(self.rect),
             trans: self.trans,
         }
     }
@@ -88,7 +109,7 @@ impl Quad {
 
 pub struct TexturedQuad<T> {
     texture: T,
-    dst: Rect,
+    dst: Option<Rect>,
     trans: Transform,
 }
 
@@ -102,7 +123,7 @@ impl<T: gl::AsTexture + 'static> Drawable for TexturedQuad<T> {
     fn draw(&self) {
         CONTEXT.with(|context| {
             if let Some(ref mut renderer) = *context.renderer.borrow_mut() {
-                renderer.fill_with_texture(self.trans, &self.dst, &self.texture);
+                renderer.fill_with_texture(*context.projection.borrow() * self.trans, self.dst.as_ref(), &self.texture);
             }
         });
     }
@@ -116,7 +137,6 @@ struct Context {
     drawables: RefCell<Vec<(RenderOrder, Box<Drawable>)>>,
 
     projection: RefCell<Transform>,
-    transform: RefCell<Transform>,
 }
 
 impl Context {
@@ -127,16 +147,11 @@ impl Context {
             seq: Cell::new(0),
             drawables: RefCell::new(Vec::new()),
             projection: RefCell::new(Transform::identity()),
-            transform: RefCell::new(Transform::identity()),
         }
     }
 
     pub fn set_target(&self, window: &Window) {
         *self.renderer.borrow_mut() = Renderer::new(window).ok();
-    }
-
-    pub fn set_transform(&self, trans: Transform) {
-        *self.transform.borrow_mut() = trans;
     }
 
     pub fn set_projection(&self, trans: Transform) {
@@ -164,10 +179,9 @@ impl Context {
         self.seq.set(0);
     }
 
-    pub fn rect(&self, rect: Rect) -> Quad {
-        Quad {
-            rect: rect,
-            trans: *self.projection.borrow() * *self.transform.borrow(),
+    pub fn trans(&self, trans: Transform) -> Trans {
+        Trans {
+            trans: trans,
         }
     }
 
@@ -207,16 +221,20 @@ pub fn present() {
     CONTEXT.with(|context| context.present())
 }
 
-pub fn set_transform(trans: Transform) {
-    CONTEXT.with(|context| context.set_transform(trans))
-}
-
 pub fn set_projection(trans: Transform) {
     CONTEXT.with(|context| context.set_projection(trans))
 }
 
 pub fn rect(rect: Rect) -> Quad {
-    CONTEXT.with(|context| context.rect(rect))
+    CONTEXT.with(|context| context.trans(Transform::identity()).rect(rect))
+}
+
+pub fn texture<T: gl::AsTexture>(texture: &T) -> TexturedQuad<T> {
+    CONTEXT.with(|context| context.trans(Transform::identity()).texture(texture))
+}
+
+pub fn trans(trans: Transform) -> Trans {
+    CONTEXT.with(|context| context.trans(trans))
 }
 
 pub fn add_camera(camera: RenderCamera) {

@@ -47,7 +47,7 @@ impl Renderer {
         self.context.swap_buffers();
     }
 
-    pub fn fill_with_texture<T: AsTexture>(&mut self, trans: Transform, dst: &Rect, texture: &T) {
+    pub fn fill_with_texture<T: AsTexture>(&mut self, trans: Transform, dst: Option<&Rect>, texture: &T) {
         if let Ok(texture) = texture.as_texture(&self.context, &mut self.textures) {
             self.quad.fill_with_texture(trans, dst, texture.texture, &texture.src);
         }
