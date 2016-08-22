@@ -68,7 +68,7 @@ impl RenderOrder {
 
 pub trait Drawable {
     fn push(self, order: RenderOrder);
-    fn draw(&self, renderer: &mut Renderer);
+    fn draw(&self);
 }
 
 pub struct Quad {
@@ -99,8 +99,12 @@ impl<T: gl::AsTexture + 'static> Drawable for TexturedQuad<T> {
         });
     }
 
-    fn draw(&self, renderer: &mut Renderer) {
-        renderer.fill_with_texture(self.trans, &self.dst, &self.texture);
+    fn draw(&self) {
+        CONTEXT.with(|context| {
+            if let Some(ref mut renderer) = *context.renderer.borrow_mut() {
+                renderer.fill_with_texture(self.trans, &self.dst, &self.texture);
+            }
+        });
     }
 }
 
@@ -146,18 +150,14 @@ impl Context {
     }
 
     pub fn present(&self) {
+        let mut drawables = self.drawables.borrow_mut();
+        drawables.sort_by(|a, b| a.0.cmp(&b.0));
+
+        for (_, drawable) in drawables.drain(..) {
+            drawable.draw();
+        }
+
         if let Some(ref mut renderer) = *self.renderer.borrow_mut() {
-            {
-                let mut drawables = self.drawables.borrow_mut();
-                drawables.sort_by(|a, b| a.0.cmp(&b.0));
-
-                for &(_, ref drawable) in drawables.iter() {
-                    drawable.draw(renderer);
-                }
-
-                drawables.clear();
-            }
-
             renderer.present();
         }
 

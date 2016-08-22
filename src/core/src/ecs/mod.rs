@@ -43,6 +43,10 @@ impl Entity {
         WORLD.with(|world| world.destroy_entity(self))
     }
 
+    pub fn enable(self) {
+        WORLD.with(|world| world.enable_entity(self))
+    }
+
     pub fn disable(self) {
         WORLD.with(|world| world.disable_entity(self))
     }
@@ -363,6 +367,10 @@ impl World {
     fn get_entity(&self, entity: &Entity) -> Option<Rc<EntityStorage>> {
         let entities = self.entities.borrow();
         entities.get(entity).cloned()
+    }
+
+    pub fn enable_entity(&self, entity: Entity) {
+        self.entities.borrow().get(&entity).map(|storage| storage.disabled.set(false));
     }
 
     pub fn disable_entity(&self, entity: Entity) {
