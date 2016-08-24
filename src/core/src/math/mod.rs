@@ -1,4 +1,4 @@
-use std::ops::{Add, Sub, Mul, Div, Rem, Neg};
+use std::ops::{Add, AddAssign, Sub, Mul, Div, Rem, Neg};
 
 pub type Scalar = f32;
 
@@ -37,6 +37,15 @@ impl Add<Scalar> for Vector {
 
     fn add(self, rhs: Scalar) -> Vector {
         vector(self.x + rhs, self.y + rhs)
+    }
+}
+
+impl AddAssign for Vector {
+    fn add_assign(&mut self, other: Vector) {
+        *self = Vector {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        };
     }
 }
 
