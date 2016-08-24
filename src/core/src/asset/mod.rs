@@ -9,7 +9,7 @@ use Error;
 
 use typemap::{TypeMap, Key};
 
-pub use self::image::{Image, ImageRef, Frame};
+pub use self::image::{Image, ImageRef, Frame, FrameRef};
 pub use self::animation::{Animation, AnimationRef, WrapMode};
 
 pub mod image;

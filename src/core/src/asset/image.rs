@@ -18,6 +18,7 @@ lazy_static! {
 }
 
 pub type ImageRef = AssetRef<Image>;
+pub type FrameRef = AssetRef<Frame>;
 
 pub struct Image {
     id: usize,
@@ -135,5 +136,11 @@ impl Frame {
 
     pub fn set_anchor(&mut self, anchor: Vector) {
         self.anchor = anchor;
+    }
+}
+
+impl Asset for Frame {
+    fn name() -> &'static str {
+        "Frame"
     }
 }

@@ -248,7 +248,7 @@ impl QuadProgram {
         })
     }
 
-    pub fn fill_with_texture(&mut self, trans: Transform, dst: Option<&Rect>, texture: &Texture, src: &Rect) {
+    pub fn fill_with_texture(&mut self, trans: Transform, dst: &Rect, texture: &Texture, src: &Rect) {
         unsafe {
             gl::Enable(gl::FRAMEBUFFER_SRGB);
             gl::Enable(gl::BLEND);
@@ -259,22 +259,10 @@ impl QuadProgram {
         self.program.active();
 
         {
-            let mat = match dst {
-                Some(dst) => {
-                    let min = dst.min();
-                    let size = dst.size();
-                    let trans = trans * Transform::offset(min) * Transform::scale(size);
-                    trans.to_gl_mat3()
-                }
-
-                None => {
-                    let min = vector(0.0, 0.0);
-                    let size = src.size();
-                    let trans = trans * Transform::offset(min) * Transform::scale(size);
-                    trans.to_gl_mat3()
-                }
-            };
-            
+            let min = dst.min();
+            let size = dst.size();
+            let trans = trans * Transform::offset(min) * Transform::scale(size);
+            let mat = trans.to_gl_mat3();
             self.program.set_uniform_matrix3_fv("u_trans", &mat);
         }
 

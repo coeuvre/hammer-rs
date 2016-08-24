@@ -49,7 +49,7 @@ impl Renderer {
 
     pub fn fill_with_texture<T: AsTexture>(&mut self, trans: Transform, dst: Option<&Rect>, texture: &T) {
         if let Ok(texture) = texture.as_texture(&self.context, &mut self.textures) {
-            self.quad.fill_with_texture(trans, dst, texture.texture, &texture.src);
+            self.quad.fill_with_texture(trans, dst.unwrap_or(&texture.option_dst), texture.texture, &texture.src);
         }
     }
 
@@ -68,6 +68,7 @@ impl Renderer {
 pub struct TextureRef<'a> {
     texture: &'a Texture,
     src: Rect,
+    option_dst: Rect,
 }
 
 pub trait AsTexture: Clone {
@@ -91,7 +92,8 @@ impl<'a> AsTexture for ImageRef {
         let size = texture.size();
         Ok(TextureRef {
             texture: texture,
-            src: Rect::with_min_size(vector(0.0, 0.0), size)
+            src: Rect::with_min_size(vector(0.0, 0.0), size),
+            option_dst: Rect::with_min_size(vector(0.0, 0.0), size),
         })
     }
 }
@@ -111,9 +113,12 @@ impl<'a> AsTexture for Frame {
         }
 
         let texture = textures.get(&id).unwrap();
+        let size = self.region().size();
+        let anchor = self.anchor() % size;
         Ok(TextureRef {
             texture: texture,
             src: *self.region(),
+            option_dst: Rect::with_min_size(-anchor, size),
         })
     }
 }
