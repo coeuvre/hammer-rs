@@ -186,14 +186,21 @@ impl QuadProgram {
         const FRAGMENT_SHADER: &'static str = r#"
         #version 330 core
 
+        uniform bool u_is_using_texture;
         uniform sampler2D u_texture0;
+        uniform vec4 u_color;
 
         in vec2 v_texcoord;
 
         out vec4 color;
 
         void main() {
-            color = texture2D(u_texture0, v_texcoord);
+            if (u_is_using_texture) {
+                color = texture2D(u_texture0, v_texcoord);
+                color = color * u_color;
+            } else {
+                color = u_color;
+            }
         }
         "#;
 
@@ -275,7 +282,36 @@ impl QuadProgram {
             self.program.set_uniform_matrix3_fv("u_tex_trans", &mat);
         }
 
+        self.program.set_uniform_1i("u_is_using_texture", 1);
+        self.program.set_uniform_4f("u_color", 1.0, 1.0, 1.0, 1.0);
         texture.active(0);
+        self.context.bind_vertex_array(self.vao);
+        unsafe { gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4); }
+        self.context.bind_vertex_array(0);
+    }
+
+    pub fn fill_with_color(&mut self, trans: Transform, dst: &Rect, r: f32, g: f32, b: f32, a: f32) {
+        unsafe {
+            gl::Enable(gl::FRAMEBUFFER_SRGB);
+            gl::Enable(gl::BLEND);
+            gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
+            gl::BlendEquation(gl::FUNC_ADD);
+         }
+
+        self.program.active();
+
+        {
+            let min = dst.min();
+            let size = dst.size();
+            let trans = trans * Transform::offset(min) * Transform::scale(size);
+            let mat = trans.to_gl_mat3();
+            self.program.set_uniform_matrix3_fv("u_trans", &mat);
+        }
+
+
+        self.program.set_uniform_1i("u_is_using_texture", 0);
+        self.program.set_uniform_4f("u_color", r, g, b, a);
+
         self.context.bind_vertex_array(self.vao);
         unsafe { gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4); }
         self.context.bind_vertex_array(0);

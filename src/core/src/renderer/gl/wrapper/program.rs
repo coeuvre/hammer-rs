@@ -71,6 +71,17 @@ impl Program {
         }
     }
 
+    pub fn set_uniform_4f(&mut self, uniform: &str, v0: f32, v1: f32, v2: f32, v3: f32) {
+        self.active();
+
+        let loc = self.get_uniform_location(uniform);
+        if loc != -1 {
+            unsafe { gl::Uniform4f(loc, v0, v1, v2, v3); }
+        } else {
+            error!("Failed to set value for uniform `{}`", uniform);
+        }
+    }
+
     pub fn set_uniform_matrix3_fv(&mut self, uniform: &str, value: &[GLfloat]) {
         self.active();
 

@@ -53,6 +53,10 @@ impl Renderer {
         }
     }
 
+    pub fn fill_with_color(&mut self, trans: Transform, dst: &Rect, r: f32, g: f32, b: f32, a: f32) {
+        self.quad.fill_with_color(trans, dst, r, g, b, a);
+    }
+
 /*
     fn prepare(&mut self) {
         unsafe {

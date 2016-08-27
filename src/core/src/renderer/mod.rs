@@ -105,6 +105,25 @@ impl Quad {
             trans: self.trans,
         }
     }
+
+    pub fn color(self, mut r: f32, mut g: f32, mut b: f32, a: f32) -> ColoredQuad {
+        // gamma correction and pre-multiply alpha
+        let gamma = 2.1;
+
+        r = r.powf(gamma);
+        g = g.powf(gamma);
+        b = b.powf(gamma);
+
+        r = r * a;
+        g = g * a;
+        b = b * a;
+
+        ColoredQuad {
+            color: (r, g, b, a),
+            dst: self.rect,
+            trans: self.trans,
+        }
+    }
 }
 
 pub struct TexturedQuad<T> {
@@ -124,6 +143,29 @@ impl<T: gl::AsTexture + 'static> Drawable for TexturedQuad<T> {
         CONTEXT.with(|context| {
             if let Some(ref mut renderer) = *context.renderer.borrow_mut() {
                 renderer.fill_with_texture(*context.projection.borrow() * self.trans, self.dst.as_ref(), &self.texture);
+            }
+        });
+    }
+}
+
+pub struct ColoredQuad {
+    color: (f32, f32, f32, f32),
+    dst: Rect,
+    trans: Transform
+}
+
+impl Drawable for ColoredQuad {
+    fn push(self, order: RenderOrder) {
+        CONTEXT.with(|context| {
+            context.add_drawable(self, order);
+        });
+    }
+
+    fn draw(&self) {
+        CONTEXT.with(|context| {
+            if let Some(ref mut renderer) = *context.renderer.borrow_mut() {
+                renderer.fill_with_color(*context.projection.borrow() * self.trans, &self.dst,
+                                         self.color.0, self.color.1, self.color.2, self.color.3);
             }
         });
     }
