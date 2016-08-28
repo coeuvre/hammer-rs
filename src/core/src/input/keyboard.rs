@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 // Copy from SDL
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 pub enum Key {
     Unknown = 0,
 
@@ -39,16 +39,16 @@ pub enum Key {
     Y = 28,
     Z = 29,
 
-    Num1 = 30,
-    Num2 = 31,
-    Num3 = 32,
-    Num4 = 33,
-    Num5 = 34,
-    Num6 = 35,
-    Num7 = 36,
-    Num8 = 37,
-    Num9 = 38,
-    Num0 = 39,
+    Num0 = 30,
+    Num1 = 31,
+    Num2 = 32,
+    Num3 = 33,
+    Num4 = 34,
+    Num5 = 35,
+    Num6 = 36,
+    Num7 = 37,
+    Num8 = 38,
+    Num9 = 39,
 
     Return = 40,
     Escape = 41,
@@ -407,11 +407,26 @@ impl Keyboard {
     }
 
     pub fn press(&self, key: Key) -> bool {
-        !self.keys.borrow()[key as usize].was_down && self.keys.borrow()[key as usize].is_down
+        self.keys.borrow()[key as usize].press()
+    }
+
+    pub fn press_keys(&self) -> KeyIterator {
+        let mut keys: Vec<Key> = Vec::new();
+        for (key, state) in self.keys.borrow().iter().enumerate() {
+            if state.press() {
+                use std::mem;
+                keys.push(unsafe { mem::transmute(key as u16) });
+            }
+        }
+
+        KeyIterator {
+            keys: keys,
+            at: 0,
+        }
     }
 
     pub fn pressed(&self, key: Key) -> bool {
-        self.keys.borrow()[key as usize].was_down && !self.keys.borrow()[key as usize].is_down
+        self.keys.borrow()[key as usize].pressed()
     }
 
     pub fn set_down(&self, key: Key) {
@@ -439,7 +454,31 @@ impl KeyState {
     pub fn new() -> KeyState {
         KeyState { was_down: false, is_down: false }
     }
+
+    pub fn press(&self) -> bool {
+        !self.was_down && self.is_down
+    }
+
+    pub fn pressed(&self) -> bool {
+        self.was_down && !self.is_down
+    }
 }
+
+pub struct KeyIterator {
+    keys: Vec<Key>,
+    at: usize,
+}
+
+impl Iterator for KeyIterator {
+    type Item = Key;
+
+    fn next(&mut self) -> Option<Key> {
+        let result = self.keys.get(self.at);
+        self.at += 1;
+        result.cloned()
+    }
+}
+
 
 thread_local!(static KEYBOARD: Keyboard = Keyboard::new());
 
@@ -469,4 +508,8 @@ pub fn set_up(key: Key) {
 
 pub fn update() {
     KEYBOARD.with(|keyboard| keyboard.update())
+}
+
+pub fn press_keys() -> KeyIterator {
+    KEYBOARD.with(|keyboard| keyboard.press_keys())
 }
