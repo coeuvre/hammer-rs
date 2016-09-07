@@ -537,6 +537,7 @@ unsafe fn create_gl_context(hdc: HDC) -> HGLRC {
 
 fn winkey_to_key(key: winapi::c_int) -> Key {
     match key {
+        VK_TAB => Key::Tab,
         VK_UP => Key::Up,
         VK_DOWN => Key::Down,
         VK_LEFT => Key::Left,

@@ -1,5 +1,8 @@
 #![feature(step_trait)]
 
+#![feature(custom_derive, plugin)]
+#![plugin(serde_macros)]
+
 extern crate typemap;
 #[macro_use]
 extern crate log;

@@ -13,6 +13,8 @@ typemap = "*"
 gl = "*"
 log = "*"
 lazy_static = "*"
+serde = "*"
+serde_macros = "*"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "*"

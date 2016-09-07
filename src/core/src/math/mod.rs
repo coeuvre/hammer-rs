@@ -2,7 +2,7 @@ use std::ops::{Add, AddAssign, Sub, Mul, Div, Rem, Neg};
 
 pub type Scalar = f32;
 
-#[derive(Copy, Clone, Default, Debug, PartialEq)]
+#[derive(Copy, Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Vector {
     pub x: Scalar,
     pub y: Scalar,
@@ -114,7 +114,7 @@ impl Neg for Vector {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Rect {
     min: Vector,
     max: Vector,
@@ -205,7 +205,7 @@ impl Rect {
 ///     | b d y | * | y |
 ///     | 0 0 1 |   | 1 |
 ///
-#[derive(Copy, Clone, Default, PartialEq)]
+#[derive(Copy, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Transform {
     a: Scalar,
     b: Scalar,
