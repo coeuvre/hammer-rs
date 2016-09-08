@@ -6,3 +6,5 @@ authors = ["Coeuvre Wong <coeuvre@gmail.com>"]
 [dependencies]
 libc = "*"
 
+hammer-core = { path = "src/core" }
+hammer-window = { path = "src/window" }
