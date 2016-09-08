@@ -1,9 +1,13 @@
 [package]
-name = "hammer_core"
+name = "hammer-core"
 version = "0.1.0"
 authors = ["Coeuvre Wong <coeuvre@gmail.com>"]
 
 build = "build.rs"
+
+[lib]
+name = "hammer_core"
+path = "lib.rs"
 
 [build-dependencies]
 gcc = "*"
